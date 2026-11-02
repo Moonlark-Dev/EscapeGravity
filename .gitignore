@@ -1,0 +1,28 @@
+# Godot 4 editor cache / imported binaries
+.godot/
+*.translation
+
+# Local build outputs and release packages
+/build/
+/dist/
+
+# Android signing material (keystore + credentials)
+/keystore/
+*.keystore
+*.jks
+
+# Python tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Local-only overrides / logs
+*.local.*
+*.log

@@ -1,0 +1,70 @@
+PASS  飞船极速 150   speed=150.0
+PASS  燃料上限 500 / 推进 4/s   fuel=484.0
+PASS  加力极速 ≈192   speed=192.0
+PASS  加力燃料 4.8/s（1.2×）   fuel=495.2
+PASS  加力槽容量 2.2s   cap=2.20
+PASS  加力推力 3×   plain=6.31 boost=18.93
+PASS  停止加力 0.7s 后加力槽恢复   before=0.60 after=1.27
+PASS  飞船碰撞半径 40 / 护盾 20
+PASS  天体表面引力 ≈285   g=285.4
+PASS  内圈 0.85r 夹紧 ≈395   g=395.0
+PASS  表面引力即 285   g=285.4
+PASS  影响半径 2r 之外引力为 0
+PASS  恒星引力对飞船自动抵消（远离恒星）   ship=0.000 full=30.53
+PASS  恒星半径 800、影响 1600
+PASS  导弹速度 150
+PASS  导弹转向率 0.525 rad/s   turn=0.525
+PASS  导弹碰撞半径 12
+PASS  屏幕内 5s 后脱锁
+PASS  导弹撞炮塔 -25   hp=25.0
+PASS  命中后过载 2.5s
+PASS  两发摧毁 50 血炮塔   kills=1
+PASS  炮塔半径 420 / 血量 50
+PASS  炮塔视野外/内移速 240/18
+PASS  齐射间隔 5s/1s、上限 3 枚
+PASS  视野内导弹从炮塔外壳发射   muzzle=434
+PASS  视野外导弹仍从侧方 820px 进入   d=820
+PASS  陨石磨损护盾 0.5   shield=19.50
+PASS  被玩家撞飞的陨石对敌人 5 伤害   hp=45.0
+PASS  大物质 3 XP / 自动吸取   xp=3
+PASS  190 吸取半径：300 外不吸引   d0=300 d1=300
+PASS  190 吸取半径：150 内被吸引   n0=150 n1=118
+PASS  每 20 XP 升级
+PASS  安全区半径 280
+PASS  进入安全区补满燃料
+PASS  进入安全区清除导弹
+PASS  进入安全区隐藏威胁信息
+PASS  离开安全区后消失并在 10s 后刷新
+PASS  商店打开 3 件商品且不回燃料
+PASS  关闭商店回到游戏
+PASS  物品栏基础 2 格
+PASS  满栏时销毁后可放入新道具   ["repair", "flare"]
+PASS  5 格上限后不再提供物品栏卡
+PASS  技能槽满后不再提供新技能
+PASS  物品栏上限 5 / 技能槽 2
+PASS  脉冲消耗 10 燃料   fuel=490.0
+PASS  脉冲使导弹脱锁
+PASS  脉冲冲量 200   v=200.0
+PASS  脉冲冷却 5s
+PASS  诱饵弹：导弹抵达后脱锁
+PASS  诱饵受引力影响
+PASS  干扰弹：使锁定导弹偏转并脱锁
+PASS  燃料耗尽且无安全区/燃料道具 → 12s 后结束
+PASS  敌方导弹伤害 25（护盾 20 时一击结束）
+PASS  复活币自动消耗并恢复 8 护盾
+PASS  攻击者在屏幕外 1900~2400 刷新   d=2326
+PASS  攻击者刷新在未探索区域
+PASS  安全区在 50 燃料距离内刷新
+PASS  攻击者沿玩家-安全区连线刷新   diff=0.00rad
+PASS  攻击者刷新在安全区外侧
+PASS  远离出生点仍有天体区块   near=26 total=42
+PASS  初始燃料 500   fuel=500
+  bot seed=200 orbit=700 invuln=false -> hp=50 hits=0 t=19.7s state=4 dmg=导弹
+  bot seed=300 orbit=700 invuln=true -> hp=0 hits=2 t=40.3s state=0 dmg=导弹
+  bot seed=201 orbit=790 invuln=false -> hp=25 hits=1 t=44.6s state=4 dmg=导弹
+  bot seed=301 orbit=790 invuln=true -> hp=0 hits=2 t=30.6s state=0 dmg=
+  bot seed=202 orbit=880 invuln=false -> hp=0 hits=2 t=32.1s state=0 dmg=
+  bot seed=302 orbit=880 invuln=true -> hp=0 hits=2 t=53.7s state=0 dmg=导弹
+PASS  无敌机器人能靠诱导击毁炮塔（验证核心循环）   invuln kills 3/3
+PASS  普通机器人也能至少击毁一次炮塔   normal kills 1/3
+RESULT: 63 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 19.7166666666668, "state": 4 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 40.2666666666657, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 1, "time": 44.5833333333321, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 30.6499999999995, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 32.0666666666661, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": true, "hits": 2, "time": 53.6833333333316, "state": 0 }], "invuln_kills": 3, "normal_kills": 1 })

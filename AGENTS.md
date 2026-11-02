@@ -1,0 +1,184 @@
+# AGENTS.md — Escape Gravity
+
+面向 AI 编码代理与人类维护者的项目指南。项目内文档、注释、提交信息、界面文案均为中文；新增内容请保持一致。
+
+## 项目简介
+
+《Escape Gravity》是一款 2D 俯视角、物理驱动、**没有直接攻击**的太空肉鸽。玩家只能推进、加力、释放技能，靠诱导敌人自己的追踪导弹撞上敌人来造成伤害。
+
+- 当前版本：**1.0.1**
+- 引擎：**Godot 4.7.2 stable**，GL Compatibility 渲染器
+- 逻辑分辨率：**1280×720**，`canvas_items` 拉伸 + `expand` 适配宽屏/刘海屏
+- 目标平台：**Windows x86_64**、**Android arm64-v8a（横屏）**
+- 美术/音频：全部为预渲染 PNG / WAV；引擎运行时**不绘制任何几何图形**
+- UI 语言：仅中文；字体 WenQuanYi Zen Hei（随包分发，许可见 `licenses/`）
+
+## 发布状态
+
+- 本仓库是**本地 Git 仓库**，当前**没有 remote、没有推送、没有打 tag / release**。
+- 未经用户明确要求，不要执行 `git remote add`、`git push`、创建 GitHub/GitLab 仓库、上传发行包或发布 Web 版。
+- 用户说“暂不发布”时，只做本地提交；不要顺手发 Release。
+- 本版**不提供 Web 构建**，`build_all.sh` 也已移除 Web 导出。
+
+## 技术栈与运行环境
+
+| 项 | 值 |
+|---|---|
+| 引擎 | Godot 4.7.2 stable（`/home/dsh/workspace/_godot/Godot_v4.7.2-stable_linux.x86_64`） |
+| 语言 | GDScript（无 C#，无第三方插件） |
+| 物理 | 自写积分 + 圆碰撞，**没有使用 Godot 物理引擎** |
+| 导出 | Windows / Linux / Android；Android 使用 JDK 17 + Android SDK |
+| Android SDK | `/home/dsh/opt/android-sdk`（build-tools 35，platform 35/36） |
+| JDK | `/home/dsh/opt/jdk17` |
+
+路径是当前开发机的约定；换机器时用环境变量覆盖，不要把绝对路径写死进游戏代码。
+
+## 目录结构
+
+```
+escape-gravity-release/
+├── project.godot              # 项目配置、autoload、拉伸、ETC2/ASTC
+├── export_presets.cfg         # Windows / Android 导出预设
+├── scenes/main.tscn           # 唯一场景入口
+├── src/
+│   ├── main.gd                # 应用外壳：标题、开局、暂停、淡入淡出、截图/自测入口
+│   ├── menu.gd                # 标题、暂停、设置、玩法说明
+│   ├── ui.gd                  # HUD、雷达、威胁弧、方位标记、触屏、升级/商店/结算
+│   ├── run.gd                 # 单局主控：状态机、生成、碰撞、XP、商店、燃料、深度
+│   ├── ship.gd                # 惯性、加力、燃料、护盾、操作辅助
+│   ├── missile.gd             # 敌方追踪导弹
+│   ├── enemy.gd               # 炮塔 / 导弹巢；移动、齐射、炮口
+│   ├── meteor.gd              # 陨石
+│   ├── matter.gd              # 物质 / XP
+│   ├── zone.gd                # 安全区 / 商店
+│   ├── galaxy.gd              # 程序化星系、区块流式、探索网格、刷新点
+│   ├── backdrop.gd            # 相机锚定的视差星云/星点
+│   ├── gravity_body.gd        # 天体引力
+│   ├── decoy.gd / anchor.gd / fx.gd
+│   ├── assets.gd / audio.gd / store.gd / controls.gd
+│   ├── consts.gd              # 全部平衡常量
+│   ├── defs.gd                # 道具、技能、升级池
+│   └── selftest.gd            # 无头断言 + 机器人可玩性
+├── assets/
+│   ├── world/                 # 46 张世界贴图
+│   ├── ui/                    # 58 张 UI 贴图
+│   ├── audio/                 # 23 个 WAV
+│   └── fonts/ui.ttc           # 中文字体
+├── tools/                     # 素材生成、构建、打包脚本
+├── docs/                      # 设计对照、美术契约、QA、截图
+├── licenses/                  # 字体等第三方许可
+├── build/                     # 导出产物（gitignored）
+├── dist/                      # 发布包（gitignored）
+└── keystore/                  # Android 签名密钥（gitignored，禁止提交）
+```
+
+## 硬性约束（改代码前必读）
+
+1. **禁止运行时绘制。** 代码中不得出现 `_draw()`、`draw_*()`、`ColorRect`、`Polygon2D`、`Line2D`。所有画面必须来自 `assets/` 下的预渲染 PNG：用 `Sprite2D`、`TextureRect`、`NinePatchRect`、`TextureProgressBar`、`Label` 与带贴图的粒子。唯一允许的“绘制”字样是截图等待 `RenderingServer.frame_post_draw`。
+2. **素材可替换。** 新美术按同名同尺寸覆盖 `assets/` 文件即可，逻辑不应依赖颜色/形状。需要新图形时，先加到 `tools/gen_assets_*.py` 生成 PNG，再在场景里引用；不要在引擎里画。
+3. **碰撞体必须贴合可见贴图。** 当前值：飞船半径 40（贴图可见 111×82）、导弹 12（64×28）、陨石 17（96×96 @0.42）、炮塔 420、导弹巢 300（贴图缩放 `R/124`）。换图改变主体占比时，同步改 `src/consts.gd` / `src/enemy.gd`。
+4. **1280×720 逻辑分辨率 + expand。** 布局用锚点/容器，不要按 1280 写死 x 坐标。移动端标题按钮必须锚定屏幕中心；触屏技能键在**右侧**，不得移回左侧。
+5. **不用物理引擎。** 速度积分、阻尼、硬上限、圆碰撞都在 `ship.gd` / `run.gd` 内自写；保持确定性，方便无头自测。
+6. **随机必须可复现。** 世界生成、刷新、掉落统一用 `RandomNumberGenerator` 并显式播种；不要在模拟逻辑里用全局 `randf()`（视觉特效除外）。
+7. **中文 UI。** 新增文案用中文；字体已随包分发，不要引入会破坏 Android 包体的字体。
+8. **一击结束的难度基线。** 护盾 20、敌方导弹 25；不要为了“更容易”悄悄改伤害/护盾而不更新文档和自测。
+9. **不提交构建产物和密钥。** `build/`、`dist/`、`.godot/`、`keystore/` 已被 `.gitignore` 排除；不要 `git add -f`。
+10. **发布前必须清理敏感信息。** `export_presets.cfg` 目前含本地 Android 签名口令；在添加 remote / 公开仓库之前，必须清空口令、轮换密钥，并确认 `keystore/` 未被跟踪。
+
+## 关键玩法不变量
+
+这些行为是 1.0.1 修复后的基线，别无意改回去：
+
+- **导弹入场**：敌人在视野内时，从炮塔最近的三炮口之一 / 导弹巢前向口、`R+14` 处出膛；视野外仍按设计文档从玩家侧向 **820px** 进入。锁定期导弹不与来源敌人碰撞，避免刚出膛自爆。
+- **敌人刷新**：有安全区时，沿**玩家 → 安全区**连线的延长线、在安全区外侧刷新；没有安全区时才用 1900~2400 随机环。敌人会切向绕行安全区，不要改回“顶在安全区边缘”。
+- **无限地图**：`Backdrop._process` 必须用相机中心 `c` 锚定图层；删掉 `c` 项会导致离开初始区块后背景消失。`Galaxy.LOAD_RADIUS=3`、`MAX_BODIES=90`，空区块保底一颗天体；物质每 2 秒按飞船周边 3400px 数量补充，5200px 外回收。
+- **触屏右侧控制列**：底部加力 150px → 其上技能 92×2 → 再上物品栏 → 物品提示；代币读数在雷达下方。方位标记重叠时沿屏幕边缘错开。
+- **平衡**：初始燃料 **500**；推进 4/s；加力 **4.8/s（1.2×）**，3× 推力，极速 192，槽 2.2s；护盾 20。
+- **状态机**：`PLAYING / LEVELUP / SHOP / DESTROY / DEAD`；暂停由 `main.gd` 控制，`run.paused` 冻结模拟。
+- **存档**：`user://escape_gravity.cfg` 只保存设置与历史记录；没有中途存档 / 云存档 / meta 解锁。
+
+## 常用命令
+
+```bash
+# 无头自测（源工程）
+/home/dsh/workspace/_godot/Godot_v4.7.2-stable_linux.x86_64 \
+  --headless --path . -- --selftest
+
+# 一键构建：import + 自测 + Windows/Linux/Android 导出 + dist 打包
+bash tools/build_all.sh
+
+# 只导出 Windows
+/home/dsh/workspace/_godot/Godot_v4.7.2-stable_linux.x86_64 \
+  --headless --path . --export-release "Windows Desktop" build/windows/EscapeGravity.exe
+
+# 只导出 Android（需要 JDK 17 / SDK / keystore）
+JAVA_HOME=/home/dsh/opt/jdk17 ANDROID_HOME=/home/dsh/opt/android-sdk \
+  /home/dsh/workspace/_godot/Godot_v4.7.2-stable_linux.x86_64 \
+  --headless --path . --export-release "Android" build/android/EscapeGravity.apk
+
+# 桌面截图（Xvfb）
+xvfb-run -a -s "-screen 0 1280x720x24" ./build/linux/EscapeGravity.x86_64 -- --shots=/tmp/shots
+
+# 移动端 20:9 截图（触屏 UI）
+xvfb-run -a -s "-screen 0 2400x1080x24" ./build/linux/EscapeGravity.x86_64 \
+  --resolution 2400x1080 -- --touch --shots=/tmp/shots_mobile
+
+# 打包 dist + SHA256SUMS
+python3 tools/make_dist.py
+```
+
+注意：
+
+- `--shots` / `--touch` 是 `OS.get_cmdline_user_args()`，必须放在 `--` 之后。
+- Android 导出会读取 `keystore/escapegravity.keystore`；该目录不在 Git 中，换机器需另行恢复。
+- 不要在仓库里启动 Web 服务器；用户已明确不需要 Web 试玩。
+
+## 验证与完成标准
+
+改动运行逻辑后，至少完成：
+
+1. `RESULT: 63 checks, 0 failed`；导出包内再跑一次 `./build/linux/EscapeGravity.x86_64 --headless -- --selftest`。
+2. 用导出包重新生成截图；桌面 11 张 + 移动端 20:9 一张，检查标题居中、触屏按钮不重叠。
+3. 无运行时绘制审计（应只有 `RenderingServer.frame_post_draw` 一条命中）：
+   ```bash
+   grep -rn "_draw\|draw_\(line\|circle\|arc\|polygon\|polyline\|string\|colored_polygon\)\|ColorRect\|Polygon2D\|Line2D" src/
+   ```
+4. APK：`apksigner verify` 通过 v2 + v3；`aapt2 dump badging` 的包名/版本/SDK/arm64/landscape 正确；无危险权限。
+5. Windows：`file build/windows/EscapeGravity.exe` 为 PE32+ x86-64，尾部含 `GDPC` 内嵌 PCK。
+6. 同步文档：`README.md` 的版本/数值/交付物表、`docs/DESIGN_MAP.md`、`docs/QA.md`、`docs/ART.md`（如改缩放）、`docs/selftest_output.txt`。
+
+## 常见任务
+
+- **改平衡数值**：只改 `src/consts.gd`（少数在 `run.gd` / `enemy.gd`），同时更新自测里的硬编码期望、README 的“关键数值”、`docs/DESIGN_MAP.md` 和 `docs/QA.md`。
+- **换美术**：按 `docs/ART.md` 的同名文件覆盖；若主体占比变化，改碰撞半径或 `enemy.gd` 的缩放分母；重新导入并生成截图。
+- **加技能/道具**：`src/defs.gd` 加定义 → `run.gd` 的 `cast_skill` / `use_item` / 升级池 → `ui.gd` 的图标与文案 → 自测。
+- **改移动端布局**：`ui.gd._build_touch` 与 `menu.gd._button_centered`；必须用 `--touch --resolution 2400x1080` 重新截图。
+- **改敌人 AI**：`enemy.gd.step`（移动/安全区绕行/开火）与 `run.gd._find_enemy_spawn`（刷新方位）；不要破坏“视野内炮口、视野外 820”的入场规则。
+- **改地图流式**：`galaxy.gd.ensure_around` / `_generate_chunk`、`backdrop.gd`、`run.gd._update_spawns` 的物质补充；改完在远点（如 120000px）验证仍有一天体与背景。
+- **改文档/截图**：截图由导出包生成，不要用编辑器截图冒充；`docs/.gdignore` 防止 Godot 导入 docs 内的 PNG。
+
+## Git 约定
+
+- 当前在 `main` 分支；本地仓库，无 remote。
+- 提交信息用中文或英文均可，建议 `type(scope): subject`，例如：
+  - `fix(mobile): 技能键移到右侧并放大`
+  - `fix(world): 背景改为相机锚定`
+  - `docs: 更新 1.0.1 验证记录`
+- 一个提交只做一类改动；不要把一个功能、格式化、文档混在一起。
+- 提交前检查：
+  ```bash
+  git status --short --ignored
+  ```
+  确认没有 `build/`、`dist/`、`keystore/`、`.godot/`、`__pycache__/` 被跟踪。
+- **不要**在没有用户明确要求时 `git tag`、`git push`、创建 Release 或上传 APK/zip。
+- 如果用户要求发布：先处理 `export_presets.cfg` 的签名口令与 `keystore/`（轮换/移出仓库），再讨论 remote 与 release。
+
+## 已知限制
+
+- Android 没有真机实测；只做了导出、签名、aapt2 静态检查和同 PCK 的 Linux 运行验证。
+- Windows exe 未做商业代码签名，首次运行可能出现 SmartScreen。
+- 触屏/手柄未做 UI 焦点导航；菜单需要点击/触摸。
+- 仅中文 UI；没有多语言。
+- 技能替换、激光、中途存档、meta 解锁未实现（见 `README.md` §6）。
+- 音效为程序化合成占位，未做人耳母带试听。
+- 低端 Android 帧率未做基准；掉帧时优先减少物质数量与星云层数。
