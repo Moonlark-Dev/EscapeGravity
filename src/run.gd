@@ -17,6 +17,7 @@ var camera: Camera2D
 var backdrop: Backdrop
 var ship: PlayerShip
 var galaxy: Galaxy
+var route: RunRoute
 
 var enemies: Array = []
 var missiles: Array = []
@@ -112,16 +113,19 @@ func _build_world() -> void:
 
 func _initial_spawn() -> void:
 	if test_mode:
+		# Tests need the planned nodes even without the presentation pass.
+		route = galaxy.build_route(Vector2.ZERO)
 		return
-	var safe_pos := galaxy.find_unexplored_point(ship.position, 950.0, 1350.0, 420.0)
-	if safe_pos == Vector2.ZERO:
-		safe_pos = ship.position + Vector2.RIGHT.rotated(rng.randf() * TAU) * 1100.0
-	safe_zone = make_zone("safe", safe_pos)
-	var shop_pos := galaxy.find_unexplored_point(ship.position, EG.SHOP_DIST_MIN, EG.SHOP_DIST_MAX, 460.0)
-	if shop_pos == Vector2.ZERO:
-		shop_pos = ship.position + Vector2.RIGHT.rotated(rng.randf() * TAU) * 3400.0
-	shop_zone = make_zone("shop", shop_pos)
+	# Step 2: fill matter around the start.
 	scatter_matter(150, ship.position, 380.0, 2900.0, true)
+	# Step 3: build the hidden route, then materialise its first nodes.
+	route = galaxy.build_route(Vector2.ZERO)
+	var safe_pos := _clear_body_point(route.safe_at(route.next_safe), 90.0)
+	route.next_safe += 1
+	safe_zone = make_zone("safe", safe_pos)
+	var shop_pos := _clear_body_point(route.shop_at(route.next_shop), 90.0)
+	route.next_shop += 1
+	shop_zone = make_zone("shop", shop_pos)
 	spawn_enemy()
 	if hud != null:
 		hud.toast("引力捕获完成 · 深度 1", EG.C_CYAN, 2.6)
@@ -385,16 +389,52 @@ func spawn_enemy() -> void:
 	e.burst = (EG.NEST_BURST if is_nest else EG.TURRET_BURST) + (1 if elite else 0)
 	e.max_locked = EG.NEST_MAX_LOCKED if is_nest else EG.MISSILE_MAX_LOCKED
 	e.overheat_time = EG.NEST_OVERHEAT if is_nest else EG.TURRET_OVERHEAT
-	e.position = _find_enemy_spawn(e)
+	e.position = _next_enemy_position(e)
 	world.add_child(e)
 	enemies.append(e)
 	current_enemy = e
 	e.fire_timer = 1.5
-	if hud != null:
-		hud.toast("侦测到攻击者：%s" % ("导弹巢" if is_nest else "炮塔"), EG.C_MAGENTA, 2.4)
+	if hud != null and not player_hidden:
+		# The attacker stays undetected until it enters the screen; the spawn
+		# only hints that something is out there.
+		hud.toast("深空中有未知信号在移动", EG.C_AMBER, 2.0)
 	if shop_zone != null and is_on_screen(shop_zone.position):
 		Audio.play("sfx_alarm", -4.0)
 	shake = maxf(shake, 0.4)
+
+## Pulls the next attacker position from the pre-generated route.  The route
+## only decides where content sits; the enemy still chases the player normally.
+func _next_enemy_position(e: Enemy) -> Vector2:
+	if route == null:
+		return _find_enemy_spawn(e)
+	var before := route.encounters.size()
+	var p: Vector2 = route.enemy_at(route.next_enemy)
+	route.next_enemy += 1
+	if route.encounters.size() != before:
+		galaxy.apply_route_bodies()
+	p = _clear_body_point(p, e.radius + 160.0)
+	if not _enemy_spawn_blocked(p, e):
+		return p
+	# The route point is normally clear; if a streamed star system landed on
+	# it, ring the point instead of abandoning the planned order.
+	for i in range(24):
+		var q: Vector2 = p + Vector2.RIGHT.rotated(TAU * float(i) / 24.0) * (e.radius + 900.0)
+		q = _clear_body_point(q, e.radius + 160.0)
+		if not _enemy_spawn_blocked(q, e):
+			return q
+	return p
+
+## Nudges a planned point out of a celestial body without changing its leg.
+func _clear_body_point(p: Vector2, clearance: float) -> Vector2:
+	if not galaxy.is_inside_any_body(p, clearance):
+		return p
+	for ring in range(1, 6):
+		var d: float = clearance + 400.0 * float(ring)
+		for i in range(12):
+			var q: Vector2 = p + Vector2.RIGHT.rotated(TAU * float(i) / 12.0) * d
+			if not galaxy.is_inside_any_body(q, clearance):
+				return q
+	return p
 
 func _find_enemy_spawn(e: Enemy) -> Vector2:
 	# The attacker and the safe zone should sit on the same bearing from the
@@ -408,7 +448,7 @@ func _find_enemy_spawn(e: Enemy) -> Vector2:
 	if aligned:
 		base_ang = (safe_zone.position - ship.position).angle()
 		var safe_d: float = ship.position.distance_to(safe_zone.position)
-		min_d = maxf(EG.SPAWN_MIN, safe_d + safe_zone.radius + e.radius + 420.0)
+		min_d = maxf(EG.SPAWN_MIN, safe_d + safe_zone.clearance_radius() + e.radius + 420.0)
 		max_d = min_d + 480.0
 	# Pass 1: prefer unexplored space, but stay on (or near) the safe-zone ray.
 	for i in range(150):
@@ -439,7 +479,7 @@ func _find_enemy_spawn(e: Enemy) -> Vector2:
 func _enemy_spawn_blocked(p: Vector2, e: Enemy) -> bool:
 	if galaxy.is_inside_any_body(p, e.radius + 160.0):
 		return true
-	if safe_zone != null and safe_zone.active and p.distance_to(safe_zone.position) < safe_zone.radius + e.radius + 400.0:
+	if safe_zone != null and safe_zone.active and p.distance_to(safe_zone.position) < safe_zone.clearance_radius() + e.radius + EG.ZONE_ENEMY_CLEAR:
 		return true
 	if shop_zone != null and shop_zone.active and p.distance_to(shop_zone.position) < shop_zone.radius + e.radius + 300.0:
 		return true
@@ -470,9 +510,12 @@ func _update_spawns(delta: float) -> void:
 
 
 func _spawn_safe_respawn() -> void:
-	var p := galaxy.find_unexplored_point(ship.position, 700.0, EG.SAFE_FUEL_DIST, 420.0)
+	var p := _next_route_safe()
+	if p == Vector2.ZERO:
+		p = galaxy.find_unexplored_point(ship.position, 700.0, EG.SAFE_FUEL_DIST, 420.0)
 	if p == Vector2.ZERO:
 		p = ship.position + galaxy.nearest_unexplored_direction(ship.position) * 1200.0
+	p = _clear_body_point(_clear_zone_of_enemies(p), 120.0)
 	safe_zone = make_zone("safe", p)
 	player_hidden = false
 	if hud != null:
@@ -480,8 +523,23 @@ func _spawn_safe_respawn() -> void:
 		hud.emphasize_radar()
 	Audio.play("sfx_safezone", -6.0)
 
+## The route point can land where the current fight is happening; slide the new
+## safe zone away from any live attacker until their sprite edges have room.
+func _clear_zone_of_enemies(p: Vector2) -> Vector2:
+	for e in enemies:
+		if e == null or e.dead:
+			continue
+		var need: float = EG.ZONE_RADIUS + e.radius + EG.ZONE_ENEMY_CLEAR
+		var d := p.distance_to(e.position)
+		if d < need:
+			var away: Vector2 = Vector2.RIGHT if d < 0.01 else (p - e.position) / d
+			p = e.position + away * need
+	return p
+
 func _spawn_shop_respawn() -> void:
-	var p := galaxy.find_unexplored_point(ship.position, EG.SHOP_DIST_MIN, EG.SHOP_DIST_MAX, 460.0)
+	var p := _next_route_shop()
+	if p == Vector2.ZERO:
+		p = galaxy.find_unexplored_point(ship.position, EG.SHOP_DIST_MIN, EG.SHOP_DIST_MAX, 460.0)
 	if p == Vector2.ZERO:
 		p = ship.position + galaxy.nearest_unexplored_direction(ship.position) * 3600.0
 	shop_zone = make_zone("shop", p)
@@ -489,6 +547,26 @@ func _spawn_shop_respawn() -> void:
 	shop_inside = false
 	if hud != null:
 		hud.toast("侦测到新的交易信标", EG.C_AMBER, 2.2)
+
+func _next_route_safe() -> Vector2:
+	if route == null:
+		return Vector2.ZERO
+	var before := route.encounters.size()
+	var p: Vector2 = route.safe_at(route.next_safe)
+	route.next_safe += 1
+	if route.encounters.size() != before:
+		galaxy.apply_route_bodies()
+	return _clear_body_point(p, 120.0)
+
+func _next_route_shop() -> Vector2:
+	if route == null:
+		return Vector2.ZERO
+	var before := route.encounters.size()
+	var p: Vector2 = route.shop_at(route.next_shop)
+	route.next_shop += 1
+	if route.encounters.size() != before:
+		galaxy.apply_route_bodies()
+	return _clear_body_point(p, 120.0)
 
 func _spawn_meteor() -> void:
 	var angle := rng.randf() * TAU
@@ -537,7 +615,16 @@ func target_position(m) -> Vector2:
 func locked_missile_count() -> int:
 	var n := 0
 	for m in missiles:
-		if not m.dead and m.is_locked():
+		# Sneak rounds fired from the dark have their own cap; they must not
+		# starve the attacker's normal directed salvos.
+		if not m.dead and m.is_locked() and not m.sneak:
+			n += 1
+	return n
+
+func sneak_missile_count() -> int:
+	var n := 0
+	for m in missiles:
+		if not m.dead and m.sneak:
 			n += 1
 	return n
 
@@ -925,8 +1012,12 @@ func cast_skill(slot: int) -> void:
 func _cast_pulse(lv: int) -> void:
 	var radius := EG.PULSE_RADIUS * (1.0 + 0.15 * float(lv - 1))
 	var impulse := EG.PULSE_IMPULSE * (1.0 + 0.15 * float(lv - 1))
-	var facing_dir := Vector2.RIGHT.rotated(ship.facing)
-	var facing_perp := facing_dir.orthogonal()
+	# 偏转分界线 = 玩家的移动方向（速度方向）；静止时退回面向，保证结果可预期。
+	var travel: Vector2 = ship.vel
+	if travel.length() < 20.0:
+		travel = Vector2.RIGHT.rotated(ship.facing)
+	var line_dir := travel.normalized()
+	var left_dir := line_dir.orthogonal()   # 屏幕坐标系里的左侧法线
 	for m in missiles:
 		if m.dead:
 			continue
@@ -935,13 +1026,16 @@ func _cast_pulse(lv: int) -> void:
 			continue
 		var radial: Vector2 = d.normalized()
 		var tangent: Vector2 = radial.orthogonal()
-		var side: float = facing_dir.cross(radial)
+		var side: float = line_dir.cross(radial)   # <0 分界线左侧，>0 右侧
 		if absf(side) < 0.06:
-			if rng.randf() < 0.5:
-				tangent = -tangent
-		else:
-			if tangent.dot(facing_perp) * side < 0.0:
-				tangent = -tangent
+			# 正压在分界线上：先沿用导弹原有的横向速度，仍无法判定才随机。
+			side = line_dir.cross(m.vel)
+			if absf(side) < 0.001:
+				side = -1.0 if rng.randf() < 0.5 else 1.0
+		# 选与所在侧同向的切线，导弹被推离分界线而不是越过它。
+		var want: Vector2 = left_dir * (-signf(side))
+		if tangent.dot(want) < 0.0:
+			tangent = -tangent
 		tangent = tangent.rotated(deg_to_rad(rng.randf_range(-EG.PULSE_SPREAD, EG.PULSE_SPREAD)))
 		m.vel = tangent * impulse
 		m.angle = tangent.angle()
@@ -1201,7 +1295,7 @@ func _check_fuel(delta: float) -> void:
 	if ship.fuel > 0.5:
 		fuel_dead_timer = 0.0
 		return
-	var safe_on_screen := safe_zone != null and is_on_screen(safe_zone.position, safe_zone.radius)
+	var safe_on_screen := safe_zone != null and is_on_screen(safe_zone.position, safe_zone.clearance_radius())
 	var has_fuel_item := has_item("fuel")
 	if safe_on_screen or has_fuel_item:
 		fuel_dead_timer = 0.0
@@ -1220,7 +1314,7 @@ func assist_accel(s: PlayerShip, delta: float = 0.0) -> Vector2:
 			acc += -s.vel.normalized() * minf(260.0, s.vel.length() * 3.2)
 			assist_active = true
 		return acc
-	if safe_zone != null and safe_zone.position.distance_to(s.position) < safe_zone.radius + 420.0:
+	if safe_zone != null and safe_zone.position.distance_to(s.position) < safe_zone.clearance_radius() + 420.0:
 		if input.length() < 0.1 and s.position.distance_to(safe_zone.position) > 40.0:
 			acc += (safe_zone.position - s.position).normalized() * EG.ZONE_GRAVITY
 			assist_active = true
@@ -1293,7 +1387,7 @@ func _alarm_tick(delta: float) -> void:
 func _tutorial_step(delta: float) -> void:
 	if test_mode:
 		return
-	if Store.hints_done or tutorial_index > 4:
+	if Store.hints_done or tutorial_index > 5:
 		return
 	tutorial_timer += delta
 	var texts := [
@@ -1302,6 +1396,7 @@ func _tutorial_step(delta: float) -> void:
 		[18.0, "护盾只有 20，敌方导弹一击必杀", EG.C_MAGENTA],
 		[26.0, "燃料有限，安全区能补满燃料并清空导弹", EG.C_MINT],
 		[34.0, "炮塔外壳会伤害你，但它也是导弹唯一能撞的东西", EG.C_VIOLET],
+		[42.0, "辅助操作装置会平衡天体引力；导弹没有这套装置，始终被引力弯折", EG.C_CYAN],
 	]
 	if Store.touch_mode:
 		texts = [
@@ -1310,6 +1405,7 @@ func _tutorial_step(delta: float) -> void:
 			[18.0, "护盾只有 20，敌方导弹一击必杀", EG.C_MAGENTA],
 			[26.0, "燃料有限，安全区能补满燃料并清空导弹", EG.C_MINT],
 			[34.0, "炮塔外壳会伤害你，但它也是导弹唯一能撞的东西", EG.C_VIOLET],
+			[42.0, "辅助操作装置会平衡天体引力；导弹没有这套装置，始终被引力弯折", EG.C_CYAN],
 		]
 	if tutorial_index < texts.size() and tutorial_timer >= float(texts[tutorial_index][0]):
 		if hud != null:

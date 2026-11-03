@@ -75,41 +75,45 @@ func step(delta: float, dir: Vector2, want_boost: bool) -> void:
 	if boosting and not was_boosting and run != null:
 		Audio.play("sfx_boost", -8.0)
 
-	if not boost_ready and boost_meter >= EG.SHIP_BOOST_RESUME:
+	# 回充只看“是否真的在加力”：松开加力后即使仍在推进，加力槽也照常恢复。
+	# 槽耗尽后要求先松开加力键，避免按住不放时在 0.22 阈值上反复抖动着火。
+	if boosting:
+		_boost_idle = 0.0
+	else:
+		_boost_idle += delta
+	if not boost_ready and boost_meter >= EG.SHIP_BOOST_RESUME and not want_boost:
 		boost_ready = true
 
 	if thrusting:
 		if boosting:
 			boost_meter = maxf(0.0, boost_meter - delta)
-			if boost_meter <= 0.0:
+			# 触底即耗尽（点火下限是 0.02，留残量会在阈值附近反复微点火）
+			if boost_meter <= 0.02:
 				boosting = false
 				boost_ready = false
+				boost_meter = 0.0
 			fuel = maxf(0.0, fuel - EG.SHIP_FUEL_BOOST * delta)
-			_boost_idle = 0.0
 		else:
 			fuel = maxf(0.0, fuel - EG.SHIP_FUEL_THRUST * delta)
-			_boost_idle += delta
 		var accel: float = EG.SHIP_ACCEL * (EG.SHIP_BOOST_MULT * boost_mult if boosting else 1.0)
 		if dash_time <= 0.0:
 			vel += dir.normalized() * accel * delta
 		facing = lerp_angle(facing, dir.angle(), 1.0 - pow(0.0004, delta))
 		thrust_level = lerpf(thrust_level, 1.0, 1.0 - pow(0.0006, delta))
 	else:
-		_boost_idle += delta
 		thrust_level = lerpf(thrust_level, 0.0, 1.0 - pow(0.0006, delta))
 		if vel.length() > 6.0:
 			facing = lerp_angle(facing, vel.angle(), 1.0 - pow(0.02, delta))
 
-	if not boosting and _boost_idle > EG.SHIP_BOOST_REFILL_DELAY and thrust_level < 0.3:
-		boost_meter = minf(boost_cap, boost_meter + EG.SHIP_BOOST_REFILL * delta)
-	elif not boosting and _boost_idle > EG.SHIP_BOOST_REFILL_DELAY and not thrusting:
+	if not boosting and _boost_idle > EG.SHIP_BOOST_REFILL_DELAY and boost_meter < boost_cap:
 		boost_meter = minf(boost_cap, boost_meter + EG.SHIP_BOOST_REFILL * delta)
 
 	# Operation assist (does not alter facing).
 	var assist: Vector2 = run.assist_accel(self) if run != null else Vector2.ZERO
 	vel += assist * delta
 
-	# Celestial gravity (stars are auto-compensated unless very close).
+	# The operation assist auto-balances star gravity unless very close; missiles
+	# have no such assist and are always bent by the same wells.
 	vel += run.gravity_ship_at(position) * delta
 
 	# Space drag / inertia.

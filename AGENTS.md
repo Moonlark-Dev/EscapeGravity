@@ -6,7 +6,7 @@
 
 《Escape Gravity》是一款 2D 俯视角、物理驱动、**没有直接攻击**的太空肉鸽。玩家只能推进、加力、释放技能，靠诱导敌人自己的追踪导弹撞上敌人来造成伤害。
 
-- 当前版本：**1.0.1**
+- 当前版本：**1.0.4**
 - 引擎：**Godot 4.7.2 stable**，GL Compatibility 渲染器
 - 逻辑分辨率：**1280×720**，`canvas_items` 拉伸 + `expand` 适配宽屏/刘海屏
 - 目标平台：**Windows x86_64**、**Android arm64-v8a（横屏）**
@@ -52,6 +52,7 @@ escape-gravity-release/
 │   ├── matter.gd              # 物质 / XP
 │   ├── zone.gd                # 安全区 / 商店
 │   ├── galaxy.gd              # 程序化星系、区块流式、探索网格、刷新点
+│   ├── route.gd               # 隐藏行进路线：商店/安全区/敌人预置点
 │   ├── backdrop.gd            # 相机锚定的视差星云/星点
 │   ├── gravity_body.gd        # 天体引力
 │   ├── decoy.gd / anchor.gd / fx.gd
@@ -87,13 +88,16 @@ escape-gravity-release/
 
 ## 关键玩法不变量
 
-这些行为是 1.0.1 修复后的基线，别无意改回去：
+这些行为是 1.0.4 修复后、并叠加隐藏路线/导弹引力改动的基线，别无意改回去：
 
-- **导弹入场**：敌人在视野内时，从炮塔最近的三炮口之一 / 导弹巢前向口、`R+14` 处出膛；视野外仍按设计文档从玩家侧向 **820px** 进入。锁定期导弹不与来源敌人碰撞，避免刚出膛自爆。
-- **敌人刷新**：有安全区时，沿**玩家 → 安全区**连线的延长线、在安全区外侧刷新；没有安全区时才用 1900~2400 随机环。敌人会切向绕行安全区，不要改回“顶在安全区边缘”。
-- **无限地图**：`Backdrop._process` 必须用相机中心 `c` 锚定图层；删掉 `c` 项会导致离开初始区块后背景消失。`Galaxy.LOAD_RADIUS=3`、`MAX_BODIES=90`，空区块保底一颗天体；物质每 2 秒按飞船周边 3400px 数量补充，5200px 外回收。
+- **导弹入场**：敌人在视野内时，从炮塔最近的三炮口之一 / 导弹巢前向口、`R+14` 处出膛；被发现的敌人在视野外仍按设计文档从玩家侧向 **820px** 进入。锁定期导弹不与来源敌人碰撞，避免刚出膛自爆。
+- **导弹引力**：锁定中与脱锁后都持续受天体引力（`MISSILE_GRAVITY_SCALE=0.6`）；引力强于转向能力时会把导弹拉离拦截线。只有玩家的辅助装置会平衡恒星引力，别把导弹也豁免。
+- **敌人刷新与发现**：按 `RunRoute` 预生成顺序取点（首段 1900~2400，之后 2100~2700）；两个敌人位置之间必有一个安全区，商店比安全区离路线更远。路线只用于布局、不渲染；不要改回随机方向刷新。敌人未进入玩家屏幕前不可见、不进雷达/方位/血条；玩家进入 `ENEMY_AGGRO_RANGE=2100` 后以 `1.5×` 速度逼近，贴图进入屏幕的同一帧才算 `discovered`。
+- **未发现也会开火**：`enemy._fire_hidden` 在屏幕边缘外 180~320px 生成偷袭弹，切线初速让它绕弧切入；72% 的方向落在敌人方位 ±57° 内，其余全随机。偷袭弹 `sneak=true`，单独上限 `ENEMY_HIDDEN_MAX=2`，且**不占**正常 3 枚直射名额。别用 `locked_missile_count()` 把它们算进去，否则会挤掉正面齐射、破坏诱导循环。
+- **安全区与敌人保持间距**：安全区预置在相邻两段敌人的中点（`SAFE_T=0.50`，首段 `SAFE_FIRST_T=0.35`），横向偏移 470~600，圆心离两侧敌人预置点 ≥1150；刷新时 `_clear_zone_of_enemies` 会按 `ZONE_ENEMY_CLEAR=520` 推开正在交战的敌人，敌人刷新校验同一间距。别再把安全区挪回贴着上一场战斗的位置。安全区出生时只有 `ZONE_ENTRY_RADIUS=78`，但所有间距/引力/燃料判定都用 `clearance_radius()`（恒为完整 280）；玩家到中心才扩张，扩张同一帧把 `radius` 设为 280，动画只影响外观。
+- **无限地图**：`Backdrop._process` 必须用相机中心 `c` 锚定图层；删掉 `c` 项会导致离开初始区块后背景消失。`Galaxy.LOAD_RADIUS=3`、`MAX_BODIES=90`，空区块保底一颗天体；`Galaxy._generate_chunk` 会为落在该区块的路线段补一颗行星；物质每 2 秒按飞船周边 3400px 数量补充，5200px 外回收。
 - **触屏右侧控制列**：底部加力 150px → 其上技能 92×2 → 再上物品栏 → 物品提示；代币读数在雷达下方。方位标记重叠时沿屏幕边缘错开。
-- **平衡**：初始燃料 **500**；推进 4/s；加力 **4.8/s（1.2×）**，3× 推力，极速 192，槽 2.2s；护盾 20。
+- **平衡**：初始燃料 **500**；推进 4/s；加力 **4.8/s（1.2×）**，3× 推力，极速 192，初始槽 **6.6s**；护盾 20。
 - **状态机**：`PLAYING / LEVELUP / SHOP / DESTROY / DEAD`；暂停由 `main.gd` 控制，`run.paused` 冻结模拟。
 - **存档**：`user://escape_gravity.cfg` 只保存设置与历史记录；没有中途存档 / 云存档 / meta 解锁。
 
@@ -137,7 +141,7 @@ python3 tools/make_dist.py
 
 改动运行逻辑后，至少完成：
 
-1. `RESULT: 63 checks, 0 failed`；导出包内再跑一次 `./build/linux/EscapeGravity.x86_64 --headless -- --selftest`。
+1. `RESULT: 104 checks, 0 failed`；导出包内再跑一次 `./build/linux/EscapeGravity.x86_64 --headless -- --selftest`。
 2. 用导出包重新生成截图；桌面 11 张 + 移动端 20:9 一张，检查标题居中、触屏按钮不重叠。
 3. 无运行时绘制审计（应只有 `RenderingServer.frame_post_draw` 一条命中）：
    ```bash
@@ -153,8 +157,8 @@ python3 tools/make_dist.py
 - **换美术**：按 `docs/ART.md` 的同名文件覆盖；若主体占比变化，改碰撞半径或 `enemy.gd` 的缩放分母；重新导入并生成截图。
 - **加技能/道具**：`src/defs.gd` 加定义 → `run.gd` 的 `cast_skill` / `use_item` / 升级池 → `ui.gd` 的图标与文案 → 自测。
 - **改移动端布局**：`ui.gd._build_touch` 与 `menu.gd._button_centered`；必须用 `--touch --resolution 2400x1080` 重新截图。
-- **改敌人 AI**：`enemy.gd.step`（移动/安全区绕行/开火）与 `run.gd._find_enemy_spawn`（刷新方位）；不要破坏“视野内炮口、视野外 820”的入场规则。
-- **改地图流式**：`galaxy.gd.ensure_around` / `_generate_chunk`、`backdrop.gd`、`run.gd._update_spawns` 的物质补充；改完在远点（如 120000px）验证仍有一天体与背景。
+- **改敌人 AI**：`enemy.gd.step`（移动/安全区绕行/开火）与 `run.gd._next_enemy_position`（路线刷新）；`_find_enemy_spawn` 只作路线缺失时的回退。不要破坏“视野内炮口、视野外 820”的入场规则。
+- **改地图流式**：`galaxy.gd.ensure_around` / `_generate_chunk`、`route.gd`、`backdrop.gd`、`run.gd._update_spawns` 的物质补充；改完在远点（如 120000px）验证仍有一天体与背景，并跑路线自测。
 - **改文档/截图**：截图由导出包生成，不要用编辑器截图冒充；`docs/.gdignore` 防止 Godot 导入 docs 内的 PNG。
 
 ## Git 约定
@@ -163,7 +167,7 @@ python3 tools/make_dist.py
 - 提交信息用中文或英文均可，建议 `type(scope): subject`，例如：
   - `fix(mobile): 技能键移到右侧并放大`
   - `fix(world): 背景改为相机锚定`
-  - `docs: 更新 1.0.1 验证记录`
+  - `docs: 更新 1.0.4 验证记录`
 - 一个提交只做一类改动；不要把一个功能、格式化、文档混在一起。
 - 提交前检查：
   ```bash

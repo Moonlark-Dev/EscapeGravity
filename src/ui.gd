@@ -624,7 +624,9 @@ func refresh() -> void:
 
 func _refresh_enemy() -> void:
 	var e = run.current_enemy
-	if e == null or e.dead:
+	# An attacker stays off the HUD (name, HP, distance) until it has entered
+	# the player's screen once.
+	if e == null or e.dead or not e.discovered:
 		_enemy_holder.visible = false
 		return
 	_enemy_holder.visible = true
@@ -726,7 +728,7 @@ func _refresh_radar() -> void:
 	for m in run.missiles:
 		if not m.dead:
 			targets.append({"pos": m.position, "tex": "radar_threat"})
-	if run.current_enemy != null and not run.current_enemy.dead:
+	if run.current_enemy != null and not run.current_enemy.dead and run.current_enemy.discovered:
 		targets.append({"pos": run.current_enemy.position, "tex": "radar_enemy"})
 	for t in targets:
 		if bi >= _radar_blips.size():
@@ -790,6 +792,8 @@ func _refresh_markers() -> void:
 			"enemy":
 				target = run.current_enemy
 		if target == null or not is_instance_valid(target):
+			continue
+		if target is Enemy and not target.discovered:
 			continue
 		var sp := _world_to_screen(target.position)
 		var margin: float = 40.0

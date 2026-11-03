@@ -26,7 +26,7 @@ const SHIP_MAX_SPEED := 150.0
 const SHIP_DRAG := 0.22
 const SHIP_BOOST_MULT := 3.0
 const SHIP_BOOST_SPEED_MULT := 1.28
-const SHIP_BOOST_MAX := 2.2
+const SHIP_BOOST_MAX := 6.6          # initial gauge; 3x the old 2.2 s tank
 const SHIP_BOOST_REFILL := 1.6          # per second, after the 0.7 s pause
 const SHIP_BOOST_RESUME := 0.22         # hysteresis: refill before re-engage
 const SHIP_BOOST_REFILL_DELAY := 0.7
@@ -45,6 +45,7 @@ const MISSILE_RADIUS := 12.0          # missile.png is 64x28; 12 px half-width
 const MISSILE_DMG_ENEMY := 25.0
 const MISSILE_DMG_SHIP := 25.0
 const MISSILE_MAX_LOCKED := 3
+const MISSILE_GRAVITY_SCALE := 0.6      # always applied; no assist on missiles
 
 # ---- Enemy (turret) ----
 const TURRET_RADIUS := 420.0
@@ -57,6 +58,16 @@ const TURRET_SPEED_OUT := 240.0
 const TURRET_SPEED_IN := 18.0
 const SPAWN_MIN := 1900.0
 const SPAWN_MAX := 2400.0
+
+# ---- Enemy discovery ----
+const ENEMY_AGGRO_RANGE := 2100.0    # 玩家进入该距离后敌人才开始主动逼近
+const ENEMY_CHASE_MULT := 1.5        # 未被看见时的逼近速度倍率
+const ENEMY_REVEAL_TIME := 0.35      # 首次进入屏幕的淡入时长
+const ENEMY_HIDDEN_BIAS := 0.72      # 未发现时导弹从敌人方向射入的概率
+const ENEMY_HIDDEN_SPREAD := 1.0     # 偏向敌人方向时的最大角度偏移（约 ±57°）
+const ENEMY_HIDDEN_EDGE_MIN := 180.0 # 出膛点在屏幕外的额外距离（下界）
+const ENEMY_HIDDEN_EDGE_MAX := 320.0 # 出膛点在屏幕外的额外距离（上界）
+const ENEMY_HIDDEN_MAX := 2          # 未发现时的导弹数量上限（不占 3 枚直射名额）
 
 # ---- Nest (second non-small enemy) ----
 const NEST_RADIUS := 300.0
@@ -96,9 +107,12 @@ const MATTER_BIG_XP := 3
 const MATTER_SMALL_XP := 1
 
 # ---- Zones ----
-const ZONE_RADIUS := 280.0
+const ZONE_RADIUS := 280.0           # 安全区扩张后的完整半径
+const ZONE_ENTRY_RADIUS := 78.0      # 进入前只比飞船大一点，玩家到中心才触发扩张
+const ZONE_EXPAND_TIME := 0.62       # 进入时的扩张动画时长
 const ZONE_GRAVITY := 46.0
 const ZONE_RESPAWN := 10.0
+const ZONE_ENEMY_CLEAR := 520.0     # 安全区贴图边缘与敌人外壳的最小间距
 const SAFE_FUEL_DIST := 1875.0      # 50 fuel worth of travel (4/s at 150 px/s)
 const SHOP_DIST_MIN := 2800.0
 const SHOP_DIST_MAX := 4200.0

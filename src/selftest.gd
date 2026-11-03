@@ -17,9 +17,14 @@ func run_tests() -> void:
 	_test_zones()
 	_test_inventory_and_upgrades()
 	_test_skills()
+	_test_pulse_direction()
 	_test_fuel_and_death()
 	_test_spawning()
+	_test_enemy_discovery()
 	_test_streaming()
+	_test_route()
+	_test_safe_zone_clearance()
+	_test_initial_map()
 	var bot := await _test_bot_playability()
 	print("RESULT: %d checks, %d failed  (bot: %s)" % [total, failed, str(bot)])
 	await get_tree().process_frame
@@ -107,7 +112,7 @@ func _test_physics() -> void:
 	_step(r, 1.0)
 	_check("加力极速 ≈192", absf(r.ship.vel.length() - 192.0) < 2.0, "speed=%.1f" % r.ship.vel.length())
 	_check("加力燃料 4.8/s（1.2×）", absf(r.ship.fuel - (r.ship.fuel_max - 4.8)) < 0.6, "fuel=%.1f" % r.ship.fuel)
-	_check("加力槽容量 2.2s", absf(r.ship.boost_cap - 2.2) < 0.001, "cap=%.2f" % r.ship.boost_cap)
+	_check("初始加力槽 6.6s（旧 2.2s 的三倍）", absf(r.ship.boost_cap - 6.6) < 0.001, "cap=%.2f" % r.ship.boost_cap)
 
 	# single-frame thrust ratio
 	r.ship.position = Vector2.ZERO
@@ -128,7 +133,7 @@ func _test_physics() -> void:
 	var v2 := r.ship.vel.length()
 	_check("加力推力 3×", absf(v2 / maxf(v1, 0.001) - 3.0) < 0.12, "plain=%.2f boost=%.2f" % [v1, v2])
 
-	# boost refill after 0.7s idle
+	# 加力槽回充只看“是否在加力”，推进中不再阻止恢复
 	r.auto_boost = false
 	r.auto_input = Vector2.ZERO
 	r.ship.boost_meter = 0.6
@@ -137,6 +142,29 @@ func _test_physics() -> void:
 	var before := r.ship.boost_meter
 	_step(r, 0.6)
 	_check("停止加力 0.7s 后加力槽恢复", r.ship.boost_meter > before + 0.3, "before=%.2f after=%.2f" % [before, r.ship.boost_meter])
+
+	r.auto_boost = false
+	r.auto_input = Vector2.RIGHT
+	r.ship.fuel = r.ship.fuel_max
+	r.ship.boost_meter = 0.6
+	r.ship.boost_ready = true
+	_step(r, 0.5)
+	var before_thrust := r.ship.boost_meter
+	_step(r, 0.6)
+	_check("推进中（未加力）加力槽同样回充", r.ship.boost_meter > before_thrust + 0.3, "before=%.2f after=%.2f" % [before_thrust, r.ship.boost_meter])
+
+	# 槽耗尽后即使一直按住加力，也要先松开才会在 0.22 阈值上重新点火
+	r.auto_boost = true
+	r.ship.fuel = r.ship.fuel_max
+	r.ship.boost_meter = 0.05
+	r.ship.boost_ready = true
+	_step(r, 0.2)
+	_step(r, 1.0)
+	_check("按住加力耗尽后不会在 0.22 阈值抖动点火", not r.ship.boost_ready and not r.ship.boosting and r.ship.boost_meter > EG.SHIP_BOOST_RESUME, "meter=%.2f ready=%s" % [r.ship.boost_meter, str(r.ship.boost_ready)])
+	r.auto_boost = false
+	r.simulate(dt)
+	_check("松开加力后加力槽重新可用", r.ship.boost_ready)
+
 	_check("飞船碰撞半径 40 / 护盾 20", EG.SHIP_RADIUS == 40.0 and EG.SHIP_SHIELD_MAX == 20.0)
 	_kill(r)
 
@@ -155,8 +183,24 @@ func _test_gravity() -> void:
 	var star := r.new_gravity_body(Vector2(0, -1500), 800.0, "star", 1)
 	var ship_g := r.galaxy.gravity_at(Vector2.ZERO, true).length()
 	var full_g := r.galaxy.gravity_at(Vector2.ZERO, false).length()
-	_check("恒星引力对飞船自动抵消（远离恒星）", ship_g < 0.001 and full_g > 0.1, "ship=%.3f full=%.2f" % [ship_g, full_g])
+	_check("辅助操作装置自动平衡恒星引力（远离恒星）", ship_g < 0.001 and full_g > 0.1, "ship=%.3f full=%.2f" % [ship_g, full_g])
 	_check("恒星半径 800、影响 1600", absf(star.influence - 1600.0) < 0.01)
+
+	# Unlike the ship, missiles never get the assist: a locked missile is also
+	# pulled off its interception course by a strong well.
+	var mr := _new_run(113)
+	_clear_arena(mr)
+	mr.ship.position = Vector2(3000, 0)
+	mr.new_gravity_body(Vector2(0, -1000), 800.0, "star", 1)
+	var me := _make_enemy(mr, Vector2(3000, -1600))
+	var gm := mr.spawn_enemy_missile(me, Vector2.ZERO, 0.0)
+	gm.source = null
+	var a0 := gm.angle
+	for i in range(30):
+		gm.step(dt)
+	var bend := absf(wrapf(gm.angle - a0, -PI, PI))
+	_check("锁定中的导弹同样持续受天体引力", gm.is_locked() and bend > 0.08, "bend=%.2frad" % bend)
+	_kill(mr)
 	_kill(r)
 
 func _test_missiles() -> void:
@@ -216,6 +260,7 @@ func _test_missiles() -> void:
 	r.missiles.clear()
 	var e_out := _make_enemy(r, Vector2(0, -1600))
 	e_out.in_view = false
+	e_out.discovered = true  # a known attacker that has left the screen
 	e_out._fire_one()
 	var mo: Missile = r.missiles[r.missiles.size() - 1]
 	_check("视野外导弹仍从侧方 820px 进入", absf(mo.position.distance_to(r.ship.position) - 820.0) < 45.0,
@@ -288,11 +333,16 @@ func _test_zones() -> void:
 	r.ship.fuel = 40.0
 	var z := r.make_zone("safe", Vector2(900, 0))
 	r.safe_zone = z
-	_check("安全区半径 280", absf(z.radius - 280.0) < 0.01 and EG.ZONE_RADIUS == 280.0)
+	_check("安全区进入前只比飞船大一点", absf(z.radius - EG.ZONE_ENTRY_RADIUS) < 0.01
+		and EG.ZONE_ENTRY_RADIUS > EG.SHIP_RADIUS and EG.ZONE_ENTRY_RADIUS < EG.ZONE_RADIUS,
+		"r=%.0f" % z.radius)
+	_check("安全区贴图初始缩小", z.scale.x < 0.4, "scale=%.2f" % z.scale.x)
 	var m := r.spawn_enemy_missile(null, Vector2(100, 0), 0.0)
 	m.source = null
 	r.ship.position = z.position
 	r._zone_checks()
+	_check("进入瞬间半径直接设为最大", absf(z.radius - 280.0) < 0.01 and EG.ZONE_RADIUS == 280.0)
+	_check("扩张动画从缩小状态开始（半径已满）", z.scale.x < 0.4, "scale=%.2f" % z.scale.x)
 	_check("进入安全区补满燃料", absf(r.ship.fuel - r.ship.fuel_max) < 0.01)
 	_check("进入安全区清除导弹", r.missiles.size() == 0)
 	_check("进入安全区隐藏威胁信息", r.player_hidden)
@@ -373,6 +423,39 @@ func _test_skills() -> void:
 	_check("干扰弹：使锁定导弹偏转并脱锁", was_locked and not m3.is_locked() and m3.vel.length() > 200.0)
 	_kill(r)
 
+func _test_pulse_direction() -> void:
+	var r := _new_run(110)
+	_clear_arena(r)
+	r.ship.position = Vector2.ZERO
+	r.ship.fuel = r.ship.fuel_max
+	r.skills = [{"id": "pulse", "level": 1, "cd": 0.0}]
+	var e := _make_enemy(r, Vector2(0, -2400))
+	var left := r.spawn_enemy_missile(e, Vector2(120, -120), 0.0)
+	var right := r.spawn_enemy_missile(e, Vector2(-120, 120), 0.0)
+	left.source = null
+	right.source = null
+
+	# 向右移动：分界线水平向右；线左（屏幕上方）向左偏，线右向下偏
+	r.ship.vel = Vector2(150, 0)
+	r.cast_skill(0)
+	_check("脉冲：移动方向左侧的导弹向左偏转", Vector2.RIGHT.cross(left.vel) < -20.0,
+		"v=(%.0f, %.0f)" % [left.vel.x, left.vel.y])
+	_check("脉冲：移动方向右侧的导弹向右偏转", Vector2.RIGHT.cross(right.vel) > 20.0,
+		"v=(%.0f, %.0f)" % [right.vel.x, right.vel.y])
+
+	# 向左移动但面向仍朝右：判定必须跟着移动方向翻面，而不是跟着面向
+	r.ship.vel = Vector2(-150, 0)
+	r.ship.facing = 0.0
+	r.ship.fuel = r.ship.fuel_max
+	r.skills[0]["cd"] = 0.0
+	left.position = Vector2(120, -120)
+	right.position = Vector2(-120, 120)
+	r.cast_skill(0)
+	_check("脉冲：分界线随移动方向而非面向",
+		Vector2.LEFT.cross(left.vel) > 20.0 and Vector2.LEFT.cross(right.vel) < -20.0,
+		"left=(%.0f, %.0f) right=(%.0f, %.0f)" % [left.vel.x, left.vel.y, right.vel.x, right.vel.y])
+	_kill(r)
+
 func _test_fuel_and_death() -> void:
 	var r := _new_run(108)
 	_clear_arena(r)
@@ -410,42 +493,110 @@ func _test_spawning() -> void:
 	var e = r.current_enemy
 	var ok_dist := false
 	var ok_unexplored := false
+	var planned0 := r.route.enemy_at(0)
 	if e != null:
 		var d: float = e.position.distance_to(r.ship.position)
-		ok_dist = d >= EG.SPAWN_MIN - 1.0 and d <= EG.SPAWN_MAX + 1.0
+		ok_dist = d >= EG.SPAWN_MIN - 1.0 and d <= 2700.0
 		ok_unexplored = not r.galaxy.is_explored(e.position)
-	_check("攻击者在屏幕外 1900~2400 刷新", ok_dist, "d=%.0f" % (e.position.distance_to(r.ship.position) if e != null else -1.0))
-	_check("攻击者刷新在未探索区域", ok_unexplored)
+	_check("首个敌人在路线首段（约 1900~2400）", ok_dist, "d=%.0f" % (e.position.distance_to(r.ship.position) if e != null else -1.0))
+	_check("首个敌人使用路线第 0 个敌人点", e != null and e.position.distance_to(planned0) < 1500)
+	_check("首个敌人位于未探索区域", ok_unexplored)
+	var p0 := Vector2.ZERO
+	if e != null:
+		p0 = e.position
 	if r.current_enemy != null:
 		r.current_enemy.remove()
 		r.enemies.clear()
 		r.current_enemy = null
 	r.safe_zone = null
 	r.safe_respawn_timer = 0.0
+	var expected_safe := r.route.safe_at(r.route.next_safe)
 	r._spawn_safe_respawn()
 	var ok_zone := false
+	var ok_planned_safe := false
 	if r.safe_zone != null:
 		var d2: float = r.safe_zone.position.distance_to(r.ship.position)
-		ok_zone = d2 <= EG.SAFE_FUEL_DIST + 1.0 and d2 >= 600.0
+		ok_zone = d2 <= EG.SAFE_FUEL_DIST + 1.0 and d2 >= 300.0
+		ok_planned_safe = r.safe_zone.position.distance_to(expected_safe) < 1500.0
 	_check("安全区在 50 燃料距离内刷新", ok_zone)
-	# Enemy and safe zone should share a bearing so the two HUD markers agree.
-	if r.current_enemy != null:
-		r.current_enemy.remove()
-		r.enemies.clear()
-		r.current_enemy = null
-	if r.safe_zone != null:
-		r.safe_zone.remove()
-		r.safe_zone = null
-	r.safe_zone = r.make_zone("safe", r.ship.position + Vector2(1100, 0))
+	_check("安全区使用路线预置点", ok_planned_safe)
+	var planned1 := r.route.enemy_at(r.route.next_enemy)
 	r.spawn_enemy()
 	var e2 = r.current_enemy
-	var diff := 9.0
-	var outer := false
-	if e2 != null:
-		diff = absf(wrapf((e2.position - r.ship.position).angle(), -PI, PI))
-		outer = e2.position.distance_to(r.ship.position) > 1100.0
-	_check("攻击者沿玩家-安全区连线刷新", e2 != null and diff < 0.55, "diff=%.2frad" % diff)
-	_check("攻击者刷新在安全区外侧", e2 != null and outer)
+	_check("敌人按路线顺序取生成点", e2 != null and e2.position.distance_to(planned1) < 1500.0)
+	_check("第二个敌人比第一个更靠路线前方", e2 != null and (e2.position - p0).dot(r.route.forward) > 0.0)
+	_kill(r)
+
+func _test_enemy_discovery() -> void:
+	var r := _new_run(118)
+	_clear_arena(r)
+	r.ship.position = Vector2.ZERO
+	r.ship.vel = Vector2.ZERO
+	r.camera.position = Vector2.ZERO
+	var e := _make_enemy(r, Vector2(0, -2600))
+	_check("敌人生成时不可见且未被发现", not e.visible and not e.discovered)
+	r.galaxy.bodies.clear()
+	var far := e.position
+	e.fire_timer = 0.0
+	for i in range(3):
+		r.simulate(dt)
+	_check("远离玩家时敌人按兵不动", not e.hunting and e.position.distance_to(far) < 0.01,
+		"d=%.1f" % e.position.distance_to(far))
+	_check("仇恨范围外不会开火", r.missiles.is_empty())
+
+	# Inside the aggro range but still off screen: it hunts and still fires.
+	e.position = Vector2(0, -2000)
+	r.camera.position = Vector2.ZERO
+	r.missiles.clear()
+	e.fire_timer = 0.0
+	for i in range(4):
+		r.simulate(dt)
+	_check("玩家靠近后敌人主动逼近", e.hunting and e.position.distance_to(r.ship.position) < 1999.0,
+		"d=%.1f" % e.position.distance_to(r.ship.position))
+	_check("进屏前敌人仍隐藏", not e.discovered and not e.visible)
+	_check("进屏前仍会开火", not r.missiles.is_empty(), "n=%d" % r.missiles.size())
+	if not r.missiles.is_empty():
+		var hm: Missile = r.missiles[0]
+		_check("未发现时导弹从屏幕外生成", not r.is_on_screen(hm.position, 0.0), "p=%s" % str(hm.position))
+		var inward: Vector2 = (r.ship.position - hm.position).normalized()
+		_check("未发现时导弹以弧线而非直冲进入", Vector2.RIGHT.rotated(hm.angle).dot(inward) < 0.62,
+			"dot=%.2f" % Vector2.RIGHT.rotated(hm.angle).dot(inward))
+		_check("开火不会暴露敌人位置", not e.visible and not e.discovered)
+	# Sneak rounds have their own cap and never consume the 3 directed slots.
+	for m in r.missiles.duplicate():
+		m.remove()
+	r.missiles.clear()
+	e._fire_one()
+	e._fire_one()
+	e._fire_one()
+	_check("未发现导弹单独上限 2、不占直射名额",
+		r.sneak_missile_count() == EG.ENEMY_HIDDEN_MAX and r.locked_missile_count() == 0,
+		"sneak=%d locked=%d" % [r.sneak_missile_count(), r.locked_missile_count()])
+	# Entry bearing is biased toward the enemy.
+	var near_bearing := 0
+	var samples := 120
+	for i in range(samples):
+		for m in r.missiles.duplicate():
+			m.remove()
+		r.missiles.clear()
+		e._fire_one()
+		if r.missiles.is_empty():
+			continue
+		var sm: Missile = r.missiles[0]
+		var b: float = (sm.position - r.ship.position).angle()
+		if absf(wrapf(b - (e.position - r.ship.position).angle(), -PI, PI)) <= EG.ENEMY_HIDDEN_SPREAD + 0.01:
+			near_bearing += 1
+	_check("未发现导弹的射入方向偏向敌人", near_bearing >= samples / 2, "%d/%d" % [near_bearing, samples])
+	for m in r.missiles.duplicate():
+		m.remove()
+	r.missiles.clear()
+
+	# Enter the screen: discovery, reveal fade and the HUD/radar gate opens.
+	e.position = Vector2(0, -700)
+	r.missiles.clear()
+	r.simulate(dt)
+	_check("进入屏幕即被发现", e.discovered and e.in_view)
+	_check("发现后贴图淡入", e.visible and e.modulate.a > 0.0, "a=%.2f" % e.modulate.a)
 	_kill(r)
 
 func _test_streaming() -> void:
@@ -459,6 +610,96 @@ func _test_streaming() -> void:
 	_check("远离出生点仍有天体区块", near >= 3, "near=%d total=%d" % [near, r.galaxy.bodies.size()])
 	var has_matter_field := r.ship.fuel_max >= 500.0
 	_check("初始燃料 500", has_matter_field and absf(r.ship.fuel - 500.0) < 0.01, "fuel=%.0f" % r.ship.fuel)
+	_kill(r)
+
+func _test_route() -> void:
+	var r := _new_run(114)
+	var route: RunRoute = r.galaxy.route
+	_check("地图生成阶段预置隐藏路线", route != null and route.encounters.size() >= RunRoute.PLAN_AHEAD,
+		"n=%d" % (route.encounters.size() if route != null else -1))
+	route.ensure_ahead(23)
+	_check("路线按滚动窗口继续预生成", route.encounters.size() >= 24, "n=%d" % route.encounters.size())
+	var min_fwd := 1.0
+	var no_reverse := true
+	for i in range(1, route.points.size()):
+		var seg: Vector2 = route.points[i] - route.points[i - 1]
+		min_fwd = minf(min_fwd, seg.normalized().dot(route.forward))
+		if i >= 2:
+			var prev: Vector2 = route.points[i - 1] - route.points[i - 2]
+			if seg.normalized().dot(prev.normalized()) < 0.0:
+				no_reverse = false
+	_check("路线不会往回走", min_fwd > 0.0 and no_reverse, "min_fwd=%.3f" % min_fwd)
+
+	var safe_between := true
+	var shop_farther := true
+	var body_near := true
+	var safe_clear := 1.0e9
+	var prev_enemy: Vector2 = route.origin
+	var first_enc := true
+	for enc in route.encounters:
+		var seg: Vector2 = enc["enemy"] - prev_enemy
+		var dir := seg.normalized()
+		var safe_rel: Vector2 = enc["safe"] - prev_enemy
+		var t: float = safe_rel.dot(dir) / maxf(seg.length(), 1.0)
+		var safe_lat: float = absf(safe_rel.cross(dir))
+		if t <= 0.05 or t >= 0.95 or safe_lat > 650.0:
+			safe_between = false
+		safe_clear = minf(safe_clear, enc["safe"].distance_to(enc["enemy"]))
+		if not first_enc:
+			safe_clear = minf(safe_clear, enc["safe"].distance_to(prev_enemy))
+		var shop_lat: float = absf((enc["shop"] - prev_enemy).cross(dir))
+		if shop_lat <= safe_lat + 300.0:
+			shop_farther = false
+		var body_lat: float = absf((enc["body"]["pos"] - prev_enemy).cross(dir))
+		if body_lat >= float(enc["body"]["radius"]) * 2.0:
+			body_near = false
+		first_enc = false
+		prev_enemy = enc["enemy"]
+	_check("两个敌人位置之间必有安全区", safe_between)
+	# 安全区圆心到相邻敌人预置点 >= 1150 时，安全区贴图（R280）与炮塔外壳（R420）
+	# 之间才留有 450px 以上的空隙，不会出现“安全区就开在敌人旁边”。
+	_check("安全区离两侧敌人都足够远", safe_clear >= 1140.0, "min=%.0f" % safe_clear)
+	_check("商店比安全区离路线更远", shop_farther)
+	_check("每段路线经过某个天体的引力圈", body_near)
+
+	var anchor: Dictionary = route.encounters[6]["body"]
+	r.galaxy.ensure_around(anchor["pos"])
+	var nb = r.galaxy.nearest_body(anchor["pos"])
+	_check("路线段所在区块保证有天体", nb != null and nb.position.distance_to(anchor["pos"]) < 900.0)
+
+	var r2 := _new_run(115)
+	_clear_arena(r2)
+	r2.spawn_enemy()
+	var p0: Vector2 = r2.route.enemy_at(0)
+	_check("敌人位置按路线顺序消耗", r2.route.next_enemy == 1 and r2.current_enemy != null and r2.current_enemy.position.distance_to(p0) < 1500.0)
+	_kill(r2)
+	_kill(r)
+
+func _test_safe_zone_clearance() -> void:
+	var r := _new_run(117)
+	_clear_arena(r)
+	r.spawn_enemy()
+	var e: Enemy = r.current_enemy
+	var want: float = EG.ZONE_RADIUS + e.radius + EG.ZONE_ENEMY_CLEAR
+	var nudged: Vector2 = r._clear_zone_of_enemies(e.position + Vector2(80, 0))
+	var kept: Vector2 = r._clear_zone_of_enemies(e.position + Vector2(want, 0))
+	_check("安全区避开当前敌人（贴图留间隙）", nudged.distance_to(e.position) >= want - 1.0,
+		"d=%.0f want=%.0f" % [nudged.distance_to(e.position), want])
+	_check("已经够远的安全区点不被挪动", kept.distance_to(e.position + Vector2(want, 0)) < 1.0)
+	_kill(r)
+
+func _test_initial_map() -> void:
+	var r := _new_run(116)
+	r.test_mode = false
+	r._initial_spawn()
+	var route: RunRoute = r.galaxy.route
+	_check("初始安全区落在路线预置点", r.safe_zone != null and r.safe_zone.position.distance_to(route.safe_at(0)) < 1500.0)
+	_check("初始商店落在路线预置点", r.shop_zone != null and r.shop_zone.position.distance_to(route.shop_at(0)) < 1500.0)
+	var shop_far := (r.shop_zone != null and r.safe_zone != null and
+		r.shop_zone.position.distance_to(r.ship.position) > r.safe_zone.position.distance_to(r.ship.position))
+	_check("初始商店比安全区离玩家更远", shop_far)
+	_check("首个敌人落在路线预置点", r.current_enemy != null and r.current_enemy.position.distance_to(route.enemy_at(0)) < 1500.0)
+	_check("地图生成时填充了物质", r.matters.size() > 50, "matter=%d" % r.matters.size())
 	_kill(r)
 
 func _test_bot_playability() -> Dictionary:
@@ -503,11 +744,16 @@ func _bot_attempt(seed_value: int, orbit_radius: float, invuln: bool) -> Diction
 			input = (r.ship.position - e.position).normalized()
 		r.auto_input = input
 		var danger := false
+		var in_pulse_range := false
 		for m in r.missiles:
 			if not m.dead and m.position.distance_to(r.ship.position) < 360.0:
 				danger = true
+			# 贴脸才脉冲：过早释放会把导弹推离“绕圈诱导”的弧线。
+			# 未发现阶段的偷袭弹不参与脉冲，避免把直射诱导弹一起推走。
+			if not m.dead and not m.sneak and m.position.distance_to(r.ship.position) < 120.0:
+				in_pulse_range = true
 		r.auto_boost = danger and r.ship.boost_meter > 0.4
-		if r.skills.size() > 0 and float(r.skills[0]["cd"]) <= 0.0 and danger:
+		if r.skills.size() > 0 and float(r.skills[0]["cd"]) <= 0.0 and in_pulse_range:
 			r.auto_pulse = true
 		var hp_before: float = e.hp
 		r.simulate(dt)

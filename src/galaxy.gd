@@ -13,6 +13,7 @@ var run
 var rng := RandomNumberGenerator.new()
 var seed_value := 0
 var bodies: Array = []          # GravityBody
+var route: RunRoute = null      # hidden layout skeleton (never rendered)
 var _chunks: Dictionary = {}    # Vector2i -> Array[GravityBody]
 var _explored: Dictionary = {}  # Vector2i -> true
 var _last_explore_cell := Vector2i(999999, 999999)
@@ -23,11 +24,19 @@ func _init(p_run, p_seed: int) -> void:
 	rng.seed = p_seed
 
 func start(origin: Vector2) -> void:
-	# A hand-placed scenic system near spawn: one big planet + one small moon.
+	# Step 1: star system / scenic bodies.
 	_add_body(origin + Vector2(2250, -1250), 320.0, "planet", 1, true)
 	_add_body(origin + Vector2(-2600, 1950), 260.0, "planet", 2, true)
 	_add_body(origin + Vector2(1400, 3000), 200.0, "planet", 3, true)
 	ensure_around(origin)
+
+## Step 3 of map generation: build the hidden travel route after the galaxy and
+## matter are in place.  Already-streamed chunks get their route body now;
+## later chunks add it in `_generate_chunk`.
+func build_route(origin: Vector2) -> RunRoute:
+	route = RunRoute.new(seed_value, origin)
+	apply_route_bodies()
+	return route
 
 func ensure_around(pos: Vector2) -> void:
 	var cc := cell_of(pos)
@@ -90,6 +99,10 @@ func _generate_chunk(c: Vector2i) -> void:
 				var nb = _add_body(pos, rr, "planet", crng.randi_range(1, 3), false)
 				if nb != null:
 					chunk_bodies.append(nb)
+	# Route bodies: one guaranteed gravity well next to each route leg.  This is
+	# what makes "every leg passes near a celestial body" true even in chunks
+	# where the normal star/rogue roll came up empty.
+	_add_route_bodies_for_chunk(c, chunk_bodies)
 	# a few extra planets even in star chunks, at the chunk corners
 	if has_star and crng.randf() < 0.35:
 		var p2 := base + Vector2(crng.randf_range(400, 900), crng.randf_range(400, 900))
@@ -122,6 +135,43 @@ func _spot_clear(p: Vector2, margin: float) -> bool:
 		if b.position.distance_to(p) < b.radius + margin:
 			return false
 	return true
+
+## Route anchors may sit closer to spawn than the normal 1200 px clearing, but
+## still must not overlap another body.
+func _spot_clear_for_route(p: Vector2, margin: float) -> bool:
+	for b in bodies:
+		if b.position.distance_to(p) < b.radius + margin:
+			return false
+	return true
+
+func _add_route_bodies_for_chunk(c: Vector2i, chunk_bodies: Array) -> void:
+	if route == null:
+		return
+	for anchor in route.body_anchors_in_chunk(c):
+		var p: Vector2 = anchor["pos"]
+		var r: float = anchor["radius"]
+		if not _spot_clear_for_route(p, 260.0):
+			continue
+		var b = _add_body(p, r, "planet", anchor["variant"], false)
+		if b != null:
+			chunk_bodies.append(b)
+
+## Route extension can add anchors inside already-streamed chunks; insert those
+## bodies without waiting for a reload.
+func apply_route_bodies() -> void:
+	if route == null:
+		return
+	for anchor in route.body_anchors():
+		var c: Vector2i = anchor["chunk"]
+		if not _chunks.has(c):
+			continue
+		var p: Vector2 = anchor["pos"]
+		var r: float = anchor["radius"]
+		if not _spot_clear_for_route(p, 260.0):
+			continue
+		var b = _add_body(p, r, "planet", anchor["variant"], false)
+		if b != null:
+			_chunks[c].append(b)
 
 func _add_body(p: Vector2, r: float, kind: String, variant: int, fixed: bool):
 	if bodies.size() >= MAX_BODIES:

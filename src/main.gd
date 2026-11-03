@@ -243,6 +243,7 @@ func _run_shots(dir: String) -> void:
 		e.fire_timer = 99.0
 		e.in_view = true
 		e.overheated = false
+		e.reveal()
 	# fly a few missiles around the player
 	for i in range(3):
 		var ang: float = -0.6 + i * 1.1
@@ -297,7 +298,9 @@ func _run_shots(dir: String) -> void:
 		m.remove()
 	run.missiles.clear()
 	run._zone_checks()
-	await _wait_frames(6)
+	# Let the expansion animation finish so the documentation shot shows the
+	# full ring (the trigger radius is already at maximum on the first frame).
+	await _wait_frames(50)
 	await _snap(dir, "05_safezone")
 
 	# shop

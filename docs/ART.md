@@ -53,8 +53,8 @@ assets/
 | `matter_big.png` | 64×64 | 0.62×（约 40px） |
 | `planet_1..3.png` | 768×768 | `scale = 2R/768`；碰撞/引力半径 = R（200~380） |
 | `star.png` | 1536×1536 | `scale = 2R/1536`；恒星 R=620~900，玩家在 1.12R 外不受其引力 |
-| `safezone.png` | 640×640 | `scale = R/280`（R=280）；环半径即碰撞/效果半径 |
-| `safezone_fill.png` | 640×640 | 同上，叠加，进入后变亮 |
+| `safezone.png` | 640×640 | 整张贴图按完整半径 `R/280` 缩放；`Zone` 节点出生时整体 `scale=78/280`，玩家进入中心后缓动到 `1.0`（R=280），环半径即扩张后的碰撞/效果半径 |
+| `safezone_fill.png` | 640×640 | 同上，叠加，进入后变亮；扩张时复用 `safezone.png` 再叠一层做冲击波 |
 | `shop_station.png` | 640×640 | `scale = R/250`（R=280） |
 | `gravity_ring.png` | 512×512 | `scale = influence/250`；天体影响边界（2R） |
 | `decoy.png` | 64×64 | 1:1，诱饵/信标 |

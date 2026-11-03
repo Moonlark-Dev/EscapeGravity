@@ -14,6 +14,9 @@ var life := 0.0
 var target := "ship"
 var decoy = null
 var source: Node2D = null
+## True for a missile launched by an undiscovered attacker. Sneak rounds get
+## their own cap and do not consume the normal 3-lock budget.
+var sneak := false
 var dead := false
 var pull := Vector2.ZERO
 var _age := 0.0
@@ -68,24 +71,32 @@ func step(delta: float) -> void:
 		if lock_timer >= EG.MISSILE_LOCK_TIME:
 			unlock()
 
+	# Missiles have no operation assist: celestial gravity always applies, even
+	# while locked.  Guidance only wins where its turn rate can out-turn the
+	# gravity well (near the surface the missile is dragged off course).
+	var g: Vector2 = run.gravity_at(position) * EG.MISSILE_GRAVITY_SCALE if run != null else Vector2.ZERO
 	if locked:
+		var cur := vel.angle()
 		var tpos: Vector2 = run.target_position(self)
 		var desired := (tpos - position).angle()
-		var diff := wrapf(desired - angle, -PI, PI)
+		var diff := wrapf(desired - cur, -PI, PI)
 		# Do not fly into the enemy right after launch (design doc: avoid self-hits).
 		if enemy != null and position.distance_to(enemy.position) < enemy.radius + 34.0:
 			var to_enemy: Vector2 = (enemy.position - position).normalized()
-			var fwd := Vector2.RIGHT.rotated(angle)
+			var fwd := Vector2.RIGHT.rotated(cur)
 			if fwd.dot(to_enemy) > 0.1:
 				diff += 1.2 * signf(fwd.cross(to_enemy))
 		var max_step := EG.MISSILE_TURN * delta
-		angle += clampf(diff, -max_step, max_step)
+		var steer := clampf(diff, -max_step, max_step)
 		if pull.length() > 1.0:
-			var pa := wrapf(pull.angle() - angle, -PI, PI)
-			angle += clampf(pa, -1.15 * delta, 1.15 * delta)
-		vel = Vector2.RIGHT.rotated(angle) * speed
+			var pa := wrapf(pull.angle() - (cur + steer), -PI, PI)
+			steer += clampf(pa, -1.15 * delta, 1.15 * delta)
+		vel = Vector2.RIGHT.rotated(cur + steer) * speed + g * delta
+		if vel.length() > 0.1:
+			angle = vel.angle()
+			vel = vel.normalized() * speed
 	else:
-		vel += (run.gravity_at(position) * 0.9 + pull) * delta
+		vel += (g + pull) * delta
 		if vel.length() > 1.0:
 			angle = vel.angle()
 

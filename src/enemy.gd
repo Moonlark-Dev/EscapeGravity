@@ -19,6 +19,8 @@ var overheat_time := EG.TURRET_OVERHEAT
 var depth := 1
 var elite := false
 var in_view := false
+var discovered := false
+var hunting := false
 var overheated := false
 var overheat_timer := 0.0
 var fire_timer := 2.0
@@ -30,6 +32,7 @@ var _sprite: Sprite2D
 var _glow: Sprite2D
 var _ember: Sprite2D
 var _t := 0.0
+var _reveal := 0.0
 var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
@@ -58,6 +61,17 @@ func _ready() -> void:
 	add_child(_ember)
 	if elite:
 		_sprite.modulate = Color(1.0, 0.82, 0.62)
+	# Undiscovered attackers are fully invisible: no hull, glow or ember may
+	# leak their position before the player's screen shows them.
+	visible = false
+
+## Skips the discovery fade (screenshots / tests / debug hooks).
+func reveal(instant: bool = true) -> void:
+	discovered = true
+	hunting = true
+	_reveal = 1.0 if instant else _reveal
+	visible = true
+	modulate = Color(1.0, 1.0, 1.0, 1.0)
 
 func step(delta: float) -> void:
 	_t += delta
@@ -67,6 +81,22 @@ func step(delta: float) -> void:
 	in_view = run.enemy_in_view(self)
 	var player_pos: Vector2 = run.ship.position
 	var dir: Vector2 = (player_pos - position).normalized()
+	var dist_to_player: float = position.distance_to(player_pos)
+
+	# Discovery: the first frame any part of the hull enters the screen. Until
+	# then the enemy is a hidden contact that does not appear on radar either.
+	if not discovered and in_view:
+		discovered = true
+		if run.hud != null:
+			run.hud.toast("发现攻击者：%s" % ("导弹巢" if kind == "nest" else "炮塔"), EG.C_MAGENTA, 2.2)
+	_reveal = move_toward(_reveal, 1.0 if discovered else 0.0, delta / maxf(0.01, EG.ENEMY_REVEAL_TIME))
+	visible = _reveal > 0.001
+	modulate = Color(1.0, 1.0, 1.0, _reveal)
+
+	# Once the player gets close the attacker starts hunting, closing the gap
+	# before it is ever visible. Before that it simply holds position.
+	if not hunting and dist_to_player <= EG.ENEMY_AGGRO_RANGE:
+		hunting = true
 
 	# Slide around celestial bodies instead of clipping through them.
 	var avoid := Vector2.ZERO
@@ -81,7 +111,7 @@ func step(delta: float) -> void:
 	if run.safe_zone != null and run.safe_zone.active:
 		var zpos: Vector2 = run.safe_zone.position
 		var zd: float = position.distance_to(zpos)
-		var clear: float = run.safe_zone.radius + radius + 240.0
+		var clear: float = run.safe_zone.clearance_radius() + radius + 240.0
 		if zd < clear:
 			var away: Vector2 = (position - zpos)
 			if away.length() < 1.0:
@@ -97,11 +127,18 @@ func step(delta: float) -> void:
 		dir = (dir + avoid).normalized()
 
 	var spd: float = speed_in if in_view else speed_out
-	var dist_to_player: float = position.distance_to(player_pos)
-	if dist_to_player > radius + 520.0:
-		position += dir * spd * delta
-	elif dist_to_player < radius + 260.0:
-		position -= dir * spd * 0.55 * delta
+	if not discovered:
+		# Hidden hunters close in faster and ignore the normal standoff: they
+		# must actually reach the screen edge before the standoff band could
+		# park them just outside a vertical screen boundary.
+		spd = speed_out * EG.ENEMY_CHASE_MULT
+	if hunting:
+		if not discovered and not in_view:
+			position += dir * spd * delta
+		elif dist_to_player > radius + 520.0:
+			position += dir * spd * delta
+		elif dist_to_player < radius + 260.0:
+			position -= dir * spd * 0.55 * delta
 
 	if overheated:
 		overheat_timer -= delta
@@ -117,7 +154,15 @@ func step(delta: float) -> void:
 				burst_gap = 0.2
 		elif fire_timer <= 0.0:
 			var locked: int = run.locked_missile_count()
-			if locked < max_locked and not run.player_hidden:
+			var sneak: int = run.sneak_missile_count()
+			# An undiscovered attacker still shoots; the missile comes in from
+			# off screen so the shot itself never reveals the hull. It only
+			# starts firing once the player is inside its aggro range. Sneak
+			# rounds have their own cap so they never starve the normal salvos.
+			var can_fire: bool = locked < max_locked and not run.player_hidden and (discovered or hunting)
+			if not discovered and sneak >= EG.ENEMY_HIDDEN_MAX:
+				can_fire = false
+			if can_fire:
 				burst_left = 1 if _rng.randf() < 0.45 else burst
 				burst_gap = 0.0
 				fire_timer = fire_in if in_view else fire_out
@@ -130,6 +175,12 @@ func _fire_one() -> void:
 		burst_left = 0
 		return
 	var player: Vector2 = run.ship.position
+	if not in_view and not discovered:
+		if run.sneak_missile_count() >= EG.ENEMY_HIDDEN_MAX:
+			burst_left = 0
+			return
+		_fire_hidden(player)
+		return
 	var spawn: Vector2
 	var muzzle_angle: float
 	if in_view:
@@ -167,6 +218,45 @@ func _fire_one() -> void:
 	run.spawn_enemy_missile(self, spawn, aim)
 	# Muzzle flash on the hull for readability.
 	Fx.sparks(run.fx_layer, spawn, Color(1.0, 0.55, 0.3, 0.9), 7, 130.0)
+
+## Missile launch while the attacker is still undiscovered. The round appears
+## outside the screen and is launched mostly tangentially, so it curves around
+## the edge before turning in. The entry bearing is biased toward the enemy so
+## the player gets a direction hint without ever seeing the hull.
+func _fire_hidden(player: Vector2) -> void:
+	var rect: Rect2 = run.screen_rect()
+	var center := rect.get_center()
+	var half := rect.size * 0.5
+	var enemy_bearing := (position - player).angle()
+	var bearing: float
+	if _rng.randf() < EG.ENEMY_HIDDEN_BIAS:
+		bearing = enemy_bearing + _rng.randf_range(-EG.ENEMY_HIDDEN_SPREAD, EG.ENEMY_HIDDEN_SPREAD)
+	else:
+		bearing = _rng.randf() * TAU
+	var spawn := _offscreen_point(center, half, bearing)
+	# Keep the spawn out of planets and out of the (invisible) attacker's hull.
+	for i in range(10):
+		var clear: bool = not run.galaxy.is_inside_any_body(spawn, 46.0) and spawn.distance_to(position) > radius + 120.0
+		if clear:
+			break
+		bearing += (0.5 if i % 2 == 0 else -0.5) * float(i + 1)
+		spawn = _offscreen_point(center, half, bearing)
+	var dir := (spawn - center)
+	if dir.length() < 1.0:
+		dir = Vector2.RIGHT.rotated(bearing)
+	dir = dir.normalized()
+	var side: float = 1.0 if _rng.randf() < 0.5 else -1.0
+	# Mostly tangent + a small inward component: the homing turn produces an
+	# off-screen arc instead of a straight line into the player.
+	var heading: Vector2 = dir.orthogonal() * side - dir * _rng.randf_range(0.18, 0.5)
+	var m = run.spawn_enemy_missile(self, spawn, heading.angle())
+	m.sneak = true
+
+func _offscreen_point(center: Vector2, half: Vector2, bearing: float) -> Vector2:
+	var dir := Vector2.RIGHT.rotated(bearing)
+	var edge: float = minf(absf(half.x / maxf(absf(dir.x), 0.001)),
+		absf(half.y / maxf(absf(dir.y), 0.001)))
+	return center + dir * (edge + _rng.randf_range(EG.ENEMY_HIDDEN_EDGE_MIN, EG.ENEMY_HIDDEN_EDGE_MAX))
 
 func _visual(delta: float) -> void:
 	if kind == "turret":

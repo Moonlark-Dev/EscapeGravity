@@ -2,40 +2,55 @@ class_name Zone
 extends Node2D
 ## Safe zone / shop. Both are circular areas; safe zones refill fuel and hide
 ## threat info, shops trade items for tokens.
+##
+## A safe zone spawns as a small marker barely larger than the ship. Reaching
+## its centre triggers the expansion: the trigger radius jumps straight to the
+## full ZONE_RADIUS (so the player can never drift back out mid-animation)
+## while the ring itself animates open with a short shockwave.
 
 var run
 var kind := "safe"
-var radius := EG.ZONE_RADIUS
+var radius := EG.ZONE_ENTRY_RADIUS
 var active := true
 var entered := false
 var used := false
 var _ring: Sprite2D
 var _fill: Sprite2D
 var _station: Sprite2D
+var _pulse: Sprite2D
 var _t := 0.0
-var _visual_scale := 1.0
+var _full_radius := EG.ZONE_RADIUS
 
 func _ready() -> void:
 	z_index = -5
 	_t = randf() * 5.0
 	if kind == "safe":
+		_full_radius = EG.ZONE_RADIUS
 		_fill = Assets.world_sprite("safezone_fill", true)
-		_fill.scale = Vector2.ONE * (radius / 280.0 * 1.06)
+		_fill.scale = Vector2.ONE * (_full_radius / 280.0 * 1.06)
 		_fill.modulate = Color(0.35, 1.0, 0.78, 0.10)
 		add_child(_fill)
 		_ring = Assets.world_sprite("safezone")
-		_ring.scale = Vector2.ONE * (radius / 280.0)
+		_ring.scale = Vector2.ONE * (_full_radius / 280.0)
 		add_child(_ring)
-		_visual_scale = radius / 280.0
+		_pulse = Assets.world_sprite("safezone", true)
+		_pulse.scale = _ring.scale
+		_pulse.modulate = Color(1.0, 1.0, 1.0, 0.0)
+		_pulse.visible = false
+		add_child(_pulse)
+		# The marker starts as a small ring around the ship-sized entry point;
+		# every sprite is authored at full size and scaled down as a whole.
+		scale = Vector2.ONE * (radius / _full_radius)
 	else:
+		_full_radius = EG.ZONE_RADIUS
+		radius = _full_radius
 		_fill = Assets.world_sprite("safezone_fill", true)
-		_fill.scale = Vector2.ONE * (radius / 280.0 * 1.1)
+		_fill.scale = Vector2.ONE * (_full_radius / 280.0 * 1.1)
 		_fill.modulate = Color(1.0, 0.72, 0.35, 0.07)
 		add_child(_fill)
 		_station = Assets.world_sprite("shop_station")
 		_station.scale = Vector2.ONE * (radius / 250.0)
 		add_child(_station)
-		_visual_scale = radius / 250.0
 		_ring = null
 
 func step(delta: float) -> void:
@@ -52,15 +67,39 @@ func step(delta: float) -> void:
 
 func set_entered(on: bool) -> void:
 	entered = on
-	var target := 1.06 if on else 1.0
-	var tw := create_tween()
-	tw.set_parallel(true)
-	tw.tween_property(self, "scale", Vector2.ONE * target, 0.35).set_trans(Tween.TRANS_CUBIC)
-	if _ring != null:
-		tw.tween_property(_ring, "modulate:a", 1.0 if on else 0.85, 0.3)
+	if on:
+		# Physics switches to the full size on the same frame the player
+		# reaches the centre; only the visuals travel.
+		radius = _full_radius
+		var tw := create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(self, "scale", Vector2.ONE, EG.ZONE_EXPAND_TIME) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		if _ring != null:
+			tw.tween_property(_ring, "modulate:a", 1.0, 0.3)
+		if _pulse != null:
+			_pulse.visible = true
+			_pulse.modulate = Color(1.0, 1.0, 1.0, 0.9)
+			var base: Vector2 = _ring.scale if _ring != null else Vector2.ONE
+			_pulse.scale = base * 0.82
+			tw.tween_property(_pulse, "scale", base * 1.6, 0.72) \
+				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			tw.tween_property(_pulse, "modulate:a", 0.0, 0.72)
+			tw.chain().tween_callback(func(): _pulse.visible = false)
+	else:
+		var tw2 := create_tween()
+		tw2.tween_property(self, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_CUBIC)
+		if _ring != null:
+			tw2.parallel().tween_property(_ring, "modulate:a", 0.85, 0.3)
 
 func inside(pos: Vector2) -> bool:
 	return position.distance_to(pos) < radius
+
+## Radius used for spacing / gravity / fuel safety. A safe zone reserves the
+## full expanded footprint from the moment it spawns, even while it still looks
+## like a small ring, so attackers never end up inside the future ring.
+func clearance_radius() -> float:
+	return maxf(radius, _full_radius)
 
 func remove() -> void:
 	active = false

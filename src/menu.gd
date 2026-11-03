@@ -124,7 +124,7 @@ func _build_title() -> void:
 	best.position = Vector2(30, 660)
 	best.size = Vector2(700, 30)
 	_content.add_child(best)
-	var ver := _label("v1.0.1", 13, EG.C_DIM)
+	var ver := _label("v1.0.4", 13, EG.C_DIM)
 	ver.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	ver.offset_left = -140
 	ver.offset_top = -44
@@ -319,12 +319,12 @@ func _build_howto() -> void:
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		p.add_child(b)
 		y += 118
-	var controls := _label("操作\nWASD / 方向键 / 左摇杆：推进（有惯性）\nShift / LS：加力（3 倍推力，2 倍燃料）\nJ / K（Y / B）：技能 1 / 2\nQ / E：切换物品　F / X：使用物品\n1-3：升级 / 商店选择　Esc：暂停", 14, EG.C_TEXT)
+	var controls := _label("操作\nWASD / 方向键 / 左摇杆：推进（有惯性）\nShift / LS：加力（3 倍推力，1.2× 燃料）\nJ / K（Y / B）：技能 1 / 2\nQ / E：切换物品　F / X：使用物品\n1-3：升级 / 商店选择　Esc：暂停", 14, EG.C_TEXT)
 	controls.position = Vector2(640, top)
 	controls.size = Vector2(390, 190)
 	controls.add_theme_constant_override("line_spacing", 4)
 	p.add_child(controls)
-	var rules := _label("生存规则\n护盾 20，敌方导弹伤害 25：挨一发就结束。\n陨石只磨损 0.5，但被你撞飞的陨石能对攻击者造成 5 伤害。\n燃料 240；耗尽后只能靠惯性漂移。\n安全区：补满燃料、清除导弹、隐藏威胁信息。\n商店：用代币购买道具。", 14, EG.C_DIM)
+	var rules := _label("生存规则\n护盾 20，敌方导弹伤害 25：挨一发就结束。\n陨石只磨损 0.5，但被你撞飞的陨石能对攻击者造成 5 伤害。\n燃料 500；耗尽后只能靠惯性漂移。\n安全区：补满燃料、清除导弹、隐藏威胁信息。\n商店：用代币购买道具。\n辅助操作装置自动平衡天体引力；导弹没有它，始终被引力弯折。", 14, EG.C_DIM)
 	rules.position = Vector2(640, top + 205)
 	rules.size = Vector2(390, 190)
 	rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
