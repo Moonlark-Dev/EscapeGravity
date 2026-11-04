@@ -34,7 +34,6 @@ var shop_open := false
 var shop_inside := false
 var shop_stock: Array = []
 var shop_bound_depth := 0
-var safe_unlocked := false
 
 var depth := 1
 var kills := 0
@@ -124,18 +123,43 @@ func _initial_spawn() -> void:
 	scatter_matter(150, ship.position, 380.0, 2900.0, true)
 	# Step 3: build the hidden route, then materialise its first nodes.
 	route = galaxy.build_route(Vector2.ZERO)
-	# The spawn is hostile: no safe zone until the first attacker is destroyed.
-	# The first safe zone is deliberately skipped when it unlocks, so the next
-	# one appears ahead of the player instead of back at the spawn point.
-	safe_unlocked = false
+	# The opening always has a safe zone: a run should start with a visible
+	# supply destination instead of making the player hunt for one after the
+	# first kill.  The zone stays put until the player enters it.
+	var safe_pos := _opening_safe_point()
+	safe_zone = make_zone("safe", _place_zone_point(safe_pos))
 	safe_respawn_timer = 0.0
+	# Spawn the attacker first: the shop is the node that yields when the route
+	# happens to place it close to the enemy, so enemy 1 keeps its planned band.
+	spawn_enemy()
 	var shop_pos := _next_route_shop()
 	shop_zone = make_zone("shop", _place_zone_point(shop_pos))
 	shop_bound_depth = depth
-	spawn_enemy()
 	if hud != null:
-		hud.toast("引力捕获完成 · 深度 1", EG.C_CYAN, 2.6)
+		hud.toast("引力捕获完成 · 安全区已标记", EG.C_CYAN, 2.6)
+		hud.emphasize_radar()
 		tutorial_timer = 2.0
+
+## The first safe zone uses the route's opening node, but a body relocation or
+## an unlucky seed can drop it within the assist radius (700px) of the ship,
+## which would tug the player in before they can steer.  Keep the opening zone
+## at least 640px away; if the planned node is too close, pick a forward point.
+func _opening_safe_point() -> Vector2:
+	var clear := EG.ZONE_RADIUS + EG.BODY_CONTENT_MARGIN
+	var p := _next_route_safe()
+	if p.distance_to(ship.position) >= 640.0 and not galaxy.is_inside_any_body(p, clear):
+		return p
+	# Body relocation or an unlucky seed can put the planned node on the ship.
+	# Scan rings around the ship instead of letting _clear_body_point fall back
+	# towards the start; every candidate is 900px+ away by construction.
+	for ring in range(3):
+		var base := 950.0 + 480.0 * float(ring)
+		for i in range(24):
+			var ang := route.forward.angle() + TAU * float(i) / 24.0 + float(ring) * 0.13
+			var q := ship.position + Vector2.RIGHT.rotated(ang) * (base + 300.0 * (0.5 + 0.5 * sin(float(i))))
+			if not galaxy.is_inside_any_body(q, clear):
+				return q
+	return ship.position + route.forward * 1600.0
 
 # ---------------------------------------------------------------- nodes
 
@@ -430,6 +454,27 @@ func _next_enemy_position(e: Enemy) -> Vector2:
 		galaxy.apply_route_bodies()
 	var clear: float = e.radius + EG.BODY_CONTENT_MARGIN
 	var p := _clear_body_point(cursor, clear)
+	# The route reserves 1150px between a safe zone and its neighbours while the
+	# spawn check asks for the full ZONE_ENEMY_CLEAR (1220); a relocated shop can
+	# also end up close.  Slide the attacker out along the zone ray by the small
+	# deficit; the generic ring search would otherwise throw it ~900px off the
+	# planned leg.
+	for _i in range(3):
+		var zone: Zone = null
+		var need := 0.0
+		if safe_zone != null and safe_zone.active:
+			need = safe_zone.clearance_radius() + e.radius + EG.ZONE_ENEMY_CLEAR
+			if p.distance_to(safe_zone.position) < need:
+				zone = safe_zone
+		if zone == null and shop_zone != null and shop_zone.active:
+			need = shop_zone.radius + e.radius + EG.ZONE_ENEMY_CLEAR
+			if p.distance_to(shop_zone.position) < need:
+				zone = shop_zone
+		if zone == null:
+			break
+		var d: float = p.distance_to(zone.position)
+		var away: Vector2 = (p - zone.position) / d if d > 1.0 else route.forward
+		p = _clear_body_point(zone.position + away * need, clear)
 	if not _enemy_spawn_blocked(p, e):
 		return p
 	# The route point is normally clear; if a streamed star system landed on
@@ -524,7 +569,7 @@ func _update_spawns(delta: float) -> void:
 	if current_enemy == null and enemies.size() == 0 and safe_timer <= 0.0 and next_enemy_timer <= 0.0:
 		spawn_enemy()
 
-	if safe_unlocked and safe_respawn_timer <= 0.0 and safe_zone == null and not paused:
+	if safe_respawn_timer <= 0.0 and safe_zone == null and not paused:
 		_spawn_safe_respawn()
 	if shop_respawn_timer <= 0.0 and shop_zone == null and not paused:
 		_spawn_shop_respawn()
@@ -544,11 +589,14 @@ func _update_spawns(delta: float) -> void:
 
 func _spawn_safe_respawn() -> void:
 	var p := _next_route_safe()
-	var clear := EG.ZONE_RADIUS + EG.BODY_CONTENT_MARGIN
-	if p == Vector2.ZERO:
-		p = galaxy.find_unexplored_point(ship.position, 700.0, EG.SAFE_FUEL_DIST, clear)
-	if p == Vector2.ZERO:
-		p = ship.position + galaxy.nearest_unexplored_direction(ship.position) * 1200.0
+	# A fast run can blow through a whole leg before the 10 s timer elapses, so
+	# the pre-generated node may sit far behind the ship or beyond fuel range.
+	# In that case drop a fresh zone ahead of travel; a beacon nobody can find
+	# is worse than one that is not on the route.
+	var dir := _travel_direction()
+	if p == Vector2.ZERO or p.distance_to(ship.position) > EG.SAFE_FUEL_DIST \
+			or (p - ship.position).dot(dir) < -300.0:
+		p = _safe_point_ahead(dir)
 	p = _place_zone_point(p)
 	safe_zone = make_zone("safe", p)
 	player_hidden = false
@@ -556,6 +604,27 @@ func _spawn_safe_respawn() -> void:
 		hud.toast("安全区信号已同步", EG.C_MINT, 2.2)
 		hud.emphasize_radar()
 	Audio.play("sfx_safezone", -6.0)
+
+## Direction the player is actually travelling; falls back to the ship's nose
+## and then to the route axis when the ship is drifting / stopped.
+func _travel_direction() -> Vector2:
+	if ship != null and ship.vel.length() > 40.0:
+		return ship.vel.normalized()
+	if ship != null:
+		return Vector2.RIGHT.rotated(ship.facing)
+	if route != null:
+		return route.forward
+	return Vector2.RIGHT
+
+## Fresh safe-zone point within fuel range and inside a forward cone.
+func _safe_point_ahead(dir: Vector2) -> Vector2:
+	var clear := EG.ZONE_RADIUS + EG.BODY_CONTENT_MARGIN
+	for i in range(24):
+		var q := ship.position + dir.rotated(rng.randf_range(-0.5, 0.5)) \
+			* rng.randf_range(900.0, EG.SAFE_FUEL_DIST - 120.0)
+		if not galaxy.is_inside_any_body(q, clear):
+			return q
+	return _clear_body_point(ship.position + dir * 1200.0, clear)
 
 ## The route point can land where the current fight is happening, or on a
 ## celestial body.  Push it away from live attackers/other zones, then out of
@@ -820,7 +889,6 @@ func kill_enemy(e: Enemy) -> void:
 		tokens = mini(EG.MAX_TOKENS, tokens + 1)
 		Fx.text(fx_layer, pos + Vector2(0, -60), "+1 代币", EG.C_MAGENTA, 20)
 	depth += 1
-	_unlock_safe_after_first_kill()
 	_maybe_refresh_shop()
 	safe_timer = EG.DEPTH_SAFE_TIME
 	next_enemy_timer = EG.DEPTH_SAFE_TIME
@@ -828,17 +896,6 @@ func kill_enemy(e: Enemy) -> void:
 		hud.toast("威胁解除 · 安全时间 %d 秒" % int(EG.DEPTH_SAFE_TIME), EG.C_MINT, 2.4)
 		hud.set_safe_countdown(EG.DEPTH_SAFE_TIME)
 	Audio.play("sfx_upgrade", -6.0)
-
-## The first safe zone is deliberately locked at spawn: the opening space is
-## hostile. Destroying the first attacker unlocks it, and the spawn-side safe
-## node is skipped so the next zone appears along the route ahead.
-func _unlock_safe_after_first_kill() -> void:
-	if safe_unlocked:
-		return
-	safe_unlocked = true
-	if route != null and route.next_safe < 1:
-		route.next_safe = 1
-	safe_respawn_timer = EG.ZONE_RESPAWN
 
 ## A shop belongs to the enemy depth at which it was rolled.  If the player
 ## skips it and tears through that enemy plus the next one, the beacon is

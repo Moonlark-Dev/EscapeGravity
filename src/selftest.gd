@@ -914,24 +914,59 @@ func _test_initial_map() -> void:
 	r.test_mode = false
 	r._initial_spawn()
 	var route: RunRoute = r.galaxy.route
-	_check("出生点没有安全区", r.safe_zone == null and not r.safe_unlocked and route.next_safe == 0)
+	var first_safe: Vector2 = route.safe_at(0)
+	_check("开局生成第一个安全区", r.safe_zone != null and
+		r.safe_zone.position.distance_to(first_safe) < 1500.0)
+	_check("开局安全区在可达范围内", r.safe_zone != null and
+		r.safe_zone.position.distance_to(r.ship.position) <= EG.SAFE_FUEL_DIST + 1.0)
 	_check("出生点直接生成敌人", r.current_enemy != null)
+	if r.current_enemy != null and r.safe_zone != null:
+		var need: float = r.safe_zone.clearance_radius() + r.current_enemy.radius + EG.ZONE_ENEMY_CLEAR
+		_check("开局安全区与首个敌人保持间距",
+			r.safe_zone.position.distance_to(r.current_enemy.position) >= need - 1.0,
+			"d=%.0f need=%.0f" % [r.safe_zone.position.distance_to(r.current_enemy.position), need])
 	_check("初始商店落在路线预置点", r.shop_zone != null and r.shop_zone.position.distance_to(route.shop_at(0)) < 1500.0)
 	_check("初始商店绑定到当前敌人深度", r.shop_bound_depth == 1)
 	var init_d: float = -1.0
 	if r.current_enemy != null:
 		init_d = r.current_enemy.position.distance_to(route.enemy_at(0))
-	_check("首个敌人落在路线预置点", init_d >= 0.0 and init_d < 2200.0, "d=%.0f" % init_d)
+	_check("首个敌人落在路线预置点附近（允许避开天体）", init_d >= 0.0 and init_d < 1600.0, "d=%.0f" % init_d)
 	_check("地图生成时填充了物质", r.matters.size() > 50, "matter=%d" % r.matters.size())
-	# First kill unlocks the safe zone, skipping the spawn-side safe node.
-	var first_safe: Vector2 = route.safe_at(0)
+	_check("开局已消费首个安全区节点", route.next_safe == 1 and route.safe_at(1) != first_safe)
+
+	# First kill must not disturb the zone already on the field.
 	var e: Enemy = r.current_enemy
 	r.kill_enemy(e)
-	_check("击毁首个敌人后解锁安全区", r.safe_unlocked and absf(r.safe_respawn_timer - EG.ZONE_RESPAWN) < 0.01)
-	_check("解锁时跳过出生点旁的安全区节点", route.next_safe == 1 and route.safe_at(1) != first_safe)
+	_check("击毁首个敌人后安全区仍在场", r.safe_zone != null and
+		r.safe_zone.position.distance_to(first_safe) < 1500.0)
+
+	# The opening zone must not spawn on top of the ship (the assist would pull
+	# the player in before they can steer).  Check a handful of seeds.
+	var too_close := 0
+	for seed_i in range(150, 162):
+		var rr := _new_run(seed_i)
+		rr.test_mode = false
+		rr._initial_spawn()
+		if rr.safe_zone != null and rr.safe_zone.position.distance_to(rr.ship.position) < 640.0:
+			too_close += 1
+			print("DBG close seed=", seed_i, " d=", rr.safe_zone.position.distance_to(rr.ship.position), " safe=", rr.safe_zone.position, " ship=", rr.ship.position)
+		_kill(rr)
+	_check("多个种子的开局安全区都不贴脸", too_close == 0, "close=%d/12" % too_close)
+
+	# A fast player can be far past the planned node when the 10 s timer runs
+	# out; the replacement must still be within fuel range and ahead of travel.
+	r.safe_zone.remove()
+	r.safe_zone = null
+	r.ship.position += route.forward * 9000.0
+	r.ship.vel = route.forward * 700.0
+	r.safe_respawn_timer = 0.0
 	r._spawn_safe_respawn()
-	_check("解锁后的安全区出现在前方路线节点", r.safe_zone != null and
-		r.safe_zone.position.distance_to(route.safe_at(1)) < 1500.0)
+	var np: Vector2 = r.safe_zone.position if r.safe_zone != null else Vector2.ZERO
+	_check("高速越过预置点后安全区仍在可达范围",
+		r.safe_zone != null and np.distance_to(r.ship.position) <= EG.SAFE_FUEL_DIST + 1.0,
+		"d=%.0f" % np.distance_to(r.ship.position))
+	_check("高速越过预置点后安全区落在前方",
+		r.safe_zone != null and (np - r.ship.position).dot(route.forward) > 0.0)
 	_kill(r)
 
 func _test_bot_playability() -> Dictionary:
