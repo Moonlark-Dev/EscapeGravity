@@ -1,6 +1,6 @@
 # QA / 验证记录
 
-日期：2026-11-04 · 版本：1.0.5 · 引擎：Godot 4.7.2 stable
+日期：2026-11-04 · 版本：1.0.6 · 引擎：Godot 4.7.2 stable
 环境：Linux x86_64 · Godot headless + Xvfb/llvmpipe · JDK 17 (Temurin 17.0.21) · Android SDK build-tools 35 / platform 35
 
 ---
@@ -11,17 +11,17 @@
 godot --headless --path . -- --selftest
 ```
 
-完整输出：`docs/selftest_output.txt`（125 项断言 + 机器人明细）。
+完整输出：`docs/selftest_output.txt`（141 项断言 + 机器人明细）。
 
 ```
-RESULT: 125 checks, 0 failed
+RESULT: 141 checks, 0 failed
 ```
 
 **导出包内自测**（同一套脚本，从内嵌 PCK 运行）：
 
 ```bash
 ./build/linux/EscapeGravity.x86_64 --headless -- --selftest
-# RESULT: 125 checks, 0 failed
+# RESULT: 141 checks, 0 failed
 ```
 
 覆盖面：
@@ -32,13 +32,15 @@ RESULT: 125 checks, 0 failed
 - 引力：表面 285、内圈 395、3R 截止、辅助操作装置平衡恒星引力、锁定中的导弹仍受引力弯折（0.6×）
 - 导弹：速度/转向率/5s 脱锁/半径、命中 25、过载 2.5s、两发摧毁 50 血炮塔
 - 陨石：0.5 磨损、撞飞后对敌 5、受飞船引力
-- 物质：大 3 XP、超 190 不吸、150 内被吸、20 XP/级
-- 区域：安全区进入前 R78、扩张瞬间 R280（贴图仍在缩小状态）、补满/清弹/隐藏/离开 10s 刷新；商店 3 件且不回燃料
+- 物质：大 3 XP、超 190 不吸、150 内被吸、不安定物质靠近被甩飞且进入冷却、20 XP/级
+- 区域：安全区进入前 R78、扩张瞬间 R280（贴图仍在缩小状态）、补满/清弹/隐藏/离开 10s 刷新；引力异常安全区外圈推离、进圈甩飞、不算燃料保护；商店 3 件且不回燃料
+- 出生区：开局无安全区、首个敌人已生成；击毁首个敌人后解锁并跳过出生侧安全区节点
+- 商店绑定：所属敌人被击败后不立即刷新；连续击毁下一个敌人后自动重定位并绑定新深度
 - 发现：敌人未进屏前不可见、不进雷达/方位/血条、仇恨范围外不开火；玩家进入 2100px 后主动逼近并持续开火；未发现时导弹从屏幕外生成、以切线弧线切入、方向 72% 偏向敌人 ±57°，偷袭弹单独上限 2 且不占直射名额；进屏同一帧 `discovered` 并淡入
 - 物品/升级：2 格、满栏销毁、5 格上限后无栏位卡、技能满后无新技能卡
 - 技能：脉冲 10 燃料 / 200 冲量 / 脱锁 / 5s CD / 按移动方向左右偏转（静止按面向）；诱饵抵达脱锁；干扰弹偏转
 - 死亡：燃料耗尽 12s 判负、导弹 25 击穿 20 护盾、复活币恢复 8
-- 地图：隐藏路线不回头（每段沿主方向前进）、每段经过天体引力圈、两个敌人之间必有安全区、安全区离两侧敌人≥1150 且刷新时避开当前敌人、商店比安全区离路线更远；初始安全区/商店/敌人按路线落位；敌人按路线顺序刷新
+- 地图：隐藏路线不回头（每段沿主方向前进）、每段经过天体引力圈、42% 尝试把天体放进两个敌人之间的空白路径且避开安全区/商店/敌人、两个敌人之间必有安全区、安全区离两侧敌人≥1150 且刷新时避开当前敌人、商店比安全区离路线更远；初始商店/敌人按路线落位；敌人按路线顺序刷新
 - 生成间距：天体压住安全区/商店/敌人时环形搜索重新落点（安全区按 R280+160、敌人按外壳+160）；新天体不会生成在安全区/玩家/路线预置节点上；敌人被天体挤到会沿径向推出表面
 - 入场：视野内导弹从炮塔外壳（R+14）出膛；已发现的敌人在视野外仍为侧向 820px；未发现时走屏幕外偷袭弧线
 - 流式：距原点 120000px 加载区块仍有 ≥3 个天体
@@ -63,7 +65,7 @@ RESULT: 125 checks, 0 failed
 
 ## 2. 导出包验证
 
-> 本次 1.0.4 重新导出并验证了 Linux / Windows / Android 三个包，`dist/` 同步重打，交付物表与 SHA256SUMS 均为本批产物。
+> 本次 1.0.6 重新导出并验证了 Linux / Windows / Android 三个包，`dist/` 同步重打，交付物表与 SHA256SUMS 均为本批产物。
 
 ### 2.1 Linux（验证打包完整性）
 
@@ -74,7 +76,7 @@ xvfb-run -a -s "-screen 0 1280x720x24" \
 
 - 退出码 0；11 张截图全部生成（**由导出包运行产生，不是编辑器**），已复制到 `docs/shots/`。
 - 标题、中文字体、贴图、音频、脚本均从内嵌 PCK 加载；无缺失贴图警告。
-- `build/linux/EscapeGravity.x86_64` = 96,346,880 bytes，ELF x86-64。
+- `build/linux/EscapeGravity.x86_64` = 96,356,688 bytes，ELF x86-64。
 - 触屏 20:9 截图另用 `--resolution 2400x1080 -- --touch --shots=...` 生成，取 `04_battle` 作为 `docs/shots/12_touch.png`。
 
 ### 2.2 Windows
@@ -85,7 +87,7 @@ file build/windows/EscapeGravity.exe
 python3 -c "d=open(...).read(); print(b'GDPC' in d[-4096:])"   # True
 ```
 
-- 单文件、内嵌 PCK，无外部依赖；132,030,928 bytes。
+- 单文件、内嵌 PCK，无外部依赖；132,040,736 bytes。
 - 未做商业代码签名（没有证书），首次运行会有 SmartScreen 提示。
 
 ### 2.3 Android
@@ -96,7 +98,7 @@ apksigner verify --verbose --print-certs build/android/EscapeGravity.apk
 ```
 
 ```
-package: name='com.escapegravity.game' versionCode='6' versionName='1.0.5'
+package: name='com.escapegravity.game' versionCode='7' versionName='1.0.6'
 minSdkVersion:'24'
 targetSdkVersion:'36'
 native-code: 'arm64-v8a'
@@ -109,16 +111,16 @@ Signer #1 certificate DN: CN=Escape Gravity, OU=Games, O=Escape Gravity, L=Shang
 Signer #1 certificate SHA-256: ddd8a610132d862301c8987f18f545a6eefdf58f0617547d7fad3cec0113f5ff
 ```
 
-- APK：49,558,776 bytes；含全部 `assets/`（贴图、字体、WAV、脚本 `.gdc`、场景）。
+- APK：49,566,968 bytes；含全部 `assets/`（贴图、字体、WAV、脚本 `.gdc`、场景）。
 - 权限：无危险权限（只有 Godot/模板默认项）。
 - 未在真机运行（本机无 Android 设备）；静态检查 + 签名验证通过，Linux 导出包已验证同一 PCK 的运行时行为。
 
 ### 2.4 OpenList 分发
 
-- 已上传 `dist/EscapeGravity-1.0.5-android-arm64.apk` 到 NAS 的 `/vol1/1000/MyFiles/Public/`。
-- 远端大小 49,558,776 bytes、SHA-256 `0cc82151…75d1d9`，与本地一致。
-- 直链 HEAD 返回 `200 application/vnd.android.package-archive`，`content-length=49558776`：
-  <https://files.thisisxd.top/d/EscapeGravity-1.0.5-android-arm64.apk>
+- 已上传 `dist/EscapeGravity-1.0.6-android-arm64.apk` 到 NAS 的 `/vol1/1000/MyFiles/Public/`。
+- 远端大小 49,566,968 bytes、SHA-256 `9bf6c6e4…c4ae8a7b`，与本地一致。
+- 直链 HEAD 返回 `200 application/vnd.android.package-archive`，`content-length=49566968`：
+  <https://files.thisisxd.top/d/EscapeGravity-1.0.6-android-arm64.apk>
 
 ---
 

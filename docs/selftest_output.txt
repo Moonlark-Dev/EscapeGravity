@@ -46,6 +46,8 @@ PASS  被玩家撞飞的陨石对敌人 5 伤害   hp=45.0
 PASS  大物质 3 XP / 自动吸取   xp=3
 PASS  190 吸取半径：300 外不吸引   d0=300 d1=300
 PASS  190 吸取半径：150 内被吸引   n0=150 n1=118
+PASS  不安定物质被甩飞而不是吸收   d0=150 d1=323 collected=false
+PASS  不安定物质甩飞进入冷却   flung=1 cd=1.92
 PASS  每 20 XP 升级
 PASS  安全区进入前只比飞船大一点   r=78
 PASS  安全区贴图初始缩小   scale=0.28
@@ -58,6 +60,11 @@ PASS  离开安全区后消失并在 10s 后刷新
 PASS  高速进入安全区会被辅助装置刹停   v=11.2 d=86 hidden=true
 PASS  商店打开 3 件商品且不回燃料
 PASS  关闭商店回到游戏
+PASS  引力异常安全区有独立的视觉与状态
+PASS  引力异常安全区外圈把飞船推离而不是吸入   acc=(-186, 65)
+PASS  引力异常安全区不算燃料保护   timer=0.50
+PASS  进入引力异常圈会被甩飞   v=520 hidden=false timer=10.0
+PASS  引力异常甩飞后重新排队安全区
 PASS  物品栏基础 2 格
 PASS  满栏时销毁后可放入新道具   ["repair", "flare"]
 PASS  5 格上限后不再提供物品栏卡
@@ -82,11 +89,7 @@ PASS  首个敌人位于未探索区域
 PASS  安全区在 50 燃料距离内刷新
 PASS  安全区使用路线预置点
 PASS  敌人按路线顺序取生成点
-PASS  第二�WARNING: 2 ObjectDB instances were leaked at exit (run with `--verbose` for details).
-   at: cleanup (core/object/object.cpp:2536)
-ERROR: 1 resources still in use at exit (run with --verbose for details).
-   at: clear (core/io/resource.cpp:822)
-�敌人比第一个更靠路线前方
+PASS  第二个敌人比第一个更靠路线前方
 PASS  敌人生成时不可见且未被发现
 PASS  远离玩家时敌人按兵不动   d=0.0
 PASS  仇恨范围外不会开火
@@ -100,19 +103,24 @@ PASS  未发现导弹单独上限 2、不占直射名额   sneak=2 locked=0
 PASS  未发现导弹的射入方向偏向敌人   95/120
 PASS  进入屏幕即被发现
 PASS  发现后贴图淡入   a=0.05
-PASS  远离出生点仍有天体区块   near=24 total=38
+PASS  远离出生点仍有天体区块   near=24 total=39
 PASS  初始燃料 500   fuel=500
 PASS  地图生成阶段预置隐藏路线   n=12
 PASS  路线按滚动窗口继续预生成   n=24
 PASS  路线不会往回走   min_fwd=0.350
 PASS  两个敌人位置之间必有安全区
-PASS  安全区离两侧敌人都足够远   min=1193
+PASS  安全区离两侧敌人都足够远   min=1206
 PASS  商店比安全区离路线更远
 PASS  每段路线经过某个天体的引力圈
+PASS  两个敌人之间的空白路径会生成加速天体   n=10
+PASS  加速天体位于空白路径且避开安全区/商店/敌人
 PASS  路线段所在区块保证有天体
 PASS  敌人位置按路线顺序消耗
 PASS  安全区避开当前敌人（贴图留间隙）   d=1220 want=1220
 PASS  已经够远的安全区点不被挪动
+PASS  商店所属敌人被击败后不立即刷新
+PASS  击败下一个敌人后商店自动重新生成   depth=3 d=10032
+PASS  重新生成的商店绑定到新深度
 PASS  敌人不会生成在天体内部或贴脸   d=1540 need=1380
 PASS  敌人生成点完全在天体表面之外
 PASS  安全区不会生成在天体内部或贴脸   d=760 need=740
@@ -123,11 +131,15 @@ PASS  天体最终落地校验拒绝内容区
 PASS  安全区之外仍能落天体
 PASS  路线预置安全点预留了天体空间
 PASS  玩家所在位置不会突然生成天体
-PASS  初始安全区落在路线预置点
+PASS  出生点没有安全区
+PASS  出生点直接生成敌人
 PASS  初始商店落在路线预置点
-PASS  初始商店比安全区离玩家更远
+PASS  初始商店绑定到当前敌人深度
 PASS  首个敌人落在路线预置点   d=1769
 PASS  地图生成时填充了物质   matter=150
+PASS  击毁首个敌人后解锁安全区
+PASS  解锁时跳过出生点旁的安全区节点
+PASS  解锁后的安全区出现在前方路线节点
   bot seed=200 orbit=700 invuln=false -> hp=50 hits=0 t=21.5s state=4 dmg=导弹
   bot seed=300 orbit=700 invuln=true -> hp=0 hits=2 t=56.6s state=0 dmg=导弹
   bot seed=201 orbit=790 invuln=false -> hp=50 hits=0 t=8.5s state=4 dmg=导弹
@@ -136,4 +148,4 @@ PASS  地图生成时填充了物质   matter=150
   bot seed=302 orbit=880 invuln=true -> hp=0 hits=2 t=11.4s state=0 dmg=
 PASS  无敌机器人能靠诱导击毁炮塔（验证核心循环）   invuln kills 3/3
 PASS  普通机器人也能至少击毁一次炮塔   normal kills 1/3
-RESULT: 125 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 21.5333333333334, "state": 4 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 56.6166666666647, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 0, "time": 8.48333333333333, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 22.8666666666666, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 10.9000000000001, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": true, "hits": 2, "time": 11.3833333333335, "state": 0 }], "invuln_kills": 3, "normal_kills": 1 })
+RESULT: 141 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 21.5333333333334, "state": 4 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 56.6166666666647, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 0, "time": 8.48333333333333, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 22.8666666666666, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 10.9000000000001, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": true, "hits": 2, "time": 11.3833333333335, "state": 0 }], "invuln_kills": 3, "normal_kills": 1 })
