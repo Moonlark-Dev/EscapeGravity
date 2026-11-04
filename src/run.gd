@@ -33,6 +33,9 @@ var current_enemy: Enemy = null
 var shop_open := false
 var shop_inside := false
 var shop_stock: Array = []
+var shop_bound_depth := 0
+var safe_unlocked := false
+var volatile_hint_shown := false
 
 var depth := 1
 var kills := 0
@@ -62,7 +65,7 @@ var assist_active := false
 var orbit_assist := false
 var tutorial_index := 0
 var tutorial_timer := 0.0
-var stats := {"matter": 0, "hits": 0, "damage": 0, "unlocks": 0, "fuel_items": 0}
+var stats := {"matter": 0, "hits": 0, "damage": 0, "unlocks": 0, "fuel_items": 0, "flung": 0, "traps": 0}
 var last_damage_source := ""
 var _screen_size := EG.SCREEN
 var _last_tick := 0.0
@@ -122,10 +125,14 @@ func _initial_spawn() -> void:
 	scatter_matter(150, ship.position, 380.0, 2900.0, true)
 	# Step 3: build the hidden route, then materialise its first nodes.
 	route = galaxy.build_route(Vector2.ZERO)
-	var safe_pos := _next_route_safe()
-	safe_zone = make_zone("safe", _place_zone_point(safe_pos))
+	# The spawn is hostile: no safe zone until the first attacker is destroyed.
+	# The first safe zone is deliberately skipped when it unlocks, so the next
+	# one appears ahead of the player instead of back at the spawn point.
+	safe_unlocked = false
+	safe_respawn_timer = 0.0
 	var shop_pos := _next_route_shop()
 	shop_zone = make_zone("shop", _place_zone_point(shop_pos))
+	shop_bound_depth = depth
 	spawn_enemy()
 	if hud != null:
 		hud.toast("引力捕获完成 · 深度 1", EG.C_CYAN, 2.6)
@@ -144,10 +151,15 @@ func new_gravity_body(pos: Vector2, r: float, kind: String, variant: int) -> Gra
 		galaxy.bodies.append(b)
 	return b
 
-func make_zone(kind: String, pos: Vector2) -> Zone:
+func make_zone(kind: String, pos: Vector2, unstable_override: int = -1) -> Zone:
 	var z := Zone.new()
 	z.run = self
 	z.kind = kind
+	if kind == "safe":
+		if unstable_override >= 0:
+			z.unstable = unstable_override == 1
+		else:
+			z.unstable = rng.randf() < EG.ZONE_UNSTABLE_CHANCE
 	z.position = pos
 	world.add_child(z)
 	zones.append(z)
@@ -158,6 +170,7 @@ func _add_matter(pos: Vector2, big: bool) -> void:
 	m.run = self
 	m.big = big
 	m.xp = EG.MATTER_BIG_XP if big else EG.MATTER_SMALL_XP
+	m.volatile = rng.randf() < (EG.MATTER_VOLATILE_CHANCE_BIG if big else EG.MATTER_VOLATILE_CHANCE)
 	m.position = pos
 	world.add_child(m)
 	matters.append(m)
@@ -343,7 +356,7 @@ func gravity_ship_at(pos: Vector2) -> Vector2:
 	# A safe zone is a station-keeping pocket: its assist cancels the local
 	# body gravity so a docked ship cannot be dragged out of the ring, even if
 	# the zone sits near a 3R well. Missiles never get this protection.
-	if safe_zone != null and safe_zone.active and safe_zone.inside(pos):
+	if safe_zone != null and safe_zone.active and not safe_zone.unstable and safe_zone.inside(pos):
 		return Vector2.ZERO
 	return galaxy.gravity_at(pos, true)
 
@@ -518,7 +531,7 @@ func _update_spawns(delta: float) -> void:
 	if current_enemy == null and enemies.size() == 0 and safe_timer <= 0.0 and next_enemy_timer <= 0.0:
 		spawn_enemy()
 
-	if safe_respawn_timer <= 0.0 and safe_zone == null and not paused:
+	if safe_unlocked and safe_respawn_timer <= 0.0 and safe_zone == null and not paused:
 		_spawn_safe_respawn()
 	if shop_respawn_timer <= 0.0 and shop_zone == null and not paused:
 		_spawn_shop_respawn()
@@ -547,9 +560,15 @@ func _spawn_safe_respawn() -> void:
 	safe_zone = make_zone("safe", p)
 	player_hidden = false
 	if hud != null:
-		hud.toast("安全区信号已同步", EG.C_MINT, 2.2)
+		if safe_zone.unstable:
+			hud.toast("安全区信号异常 · 引力读数不稳定", EG.C_MAGENTA, 2.6)
+		else:
+			hud.toast("安全区信号已同步", EG.C_MINT, 2.2)
 		hud.emphasize_radar()
-	Audio.play("sfx_safezone", -6.0)
+	if safe_zone.unstable:
+		Audio.play("sfx_gravity", -6.0, 0.85)
+	else:
+		Audio.play("sfx_safezone", -6.0)
 
 ## The route point can land where the current fight is happening, or on a
 ## celestial body.  Push it away from live attackers/other zones, then out of
@@ -588,7 +607,7 @@ func _clear_zone_of_other_zones(p: Vector2) -> Vector2:
 	return p
 
 func _spawn_shop_respawn() -> void:
-	var p := _next_route_shop()
+	var p := _next_route_shop_for_progress()
 	var clear := EG.ZONE_RADIUS + EG.BODY_CONTENT_MARGIN
 	if p == Vector2.ZERO:
 		p = galaxy.find_unexplored_point(ship.position, EG.SHOP_DIST_MIN, EG.SHOP_DIST_MAX, clear)
@@ -596,6 +615,7 @@ func _spawn_shop_respawn() -> void:
 		p = ship.position + galaxy.nearest_unexplored_direction(ship.position) * 3600.0
 	p = _place_zone_point(p)
 	shop_zone = make_zone("shop", p)
+	shop_bound_depth = depth
 	shop_open = false
 	shop_inside = false
 	if hud != null:
@@ -620,6 +640,15 @@ func _next_route_shop() -> Vector2:
 	if route.encounters.size() != before:
 		galaxy.apply_route_bodies()
 	return _clear_body_point(p, EG.ZONE_RADIUS + EG.BODY_CONTENT_MARGIN)
+
+## The shop's route point should belong to the leg the player is actually on.
+## If an old beacon is refreshed after a rush, the unconsumed cursor can lag a
+## leg behind; skip forward to the current leg before taking the point.
+func _next_route_shop_for_progress() -> Vector2:
+	if route == null:
+		return Vector2.ZERO
+	route.next_shop = maxi(route.next_shop, depth - 1)
+	return _next_route_shop()
 
 func _spawn_meteor() -> void:
 	var angle := rng.randf() * TAU
@@ -804,12 +833,42 @@ func kill_enemy(e: Enemy) -> void:
 		tokens = mini(EG.MAX_TOKENS, tokens + 1)
 		Fx.text(fx_layer, pos + Vector2(0, -60), "+1 代币", EG.C_MAGENTA, 20)
 	depth += 1
+	_unlock_safe_after_first_kill()
+	_maybe_refresh_shop()
 	safe_timer = EG.DEPTH_SAFE_TIME
 	next_enemy_timer = EG.DEPTH_SAFE_TIME
 	if hud != null:
 		hud.toast("威胁解除 · 安全时间 %d 秒" % int(EG.DEPTH_SAFE_TIME), EG.C_MINT, 2.4)
 		hud.set_safe_countdown(EG.DEPTH_SAFE_TIME)
 	Audio.play("sfx_upgrade", -6.0)
+
+## The first safe zone is deliberately locked at spawn: the opening space is
+## hostile. Destroying the first attacker unlocks it, and the spawn-side safe
+## node is skipped so the next zone appears along the route ahead.
+func _unlock_safe_after_first_kill() -> void:
+	if safe_unlocked:
+		return
+	safe_unlocked = true
+	if route != null and route.next_safe < 1:
+		route.next_safe = 1
+	safe_respawn_timer = EG.ZONE_RESPAWN
+
+## A shop belongs to the enemy depth at which it was rolled.  If the player
+## skips it and tears through that enemy plus the next one, the beacon is
+## relocated to the next route shop node instead of being stranded behind.
+func _maybe_refresh_shop() -> void:
+	if shop_zone == null or not is_instance_valid(shop_zone) or not shop_zone.active:
+		return
+	if shop_inside or state == State.SHOP:
+		return
+	if depth <= shop_bound_depth + 1:
+		return
+	var old := shop_zone
+	shop_zone = null
+	old.remove()
+	_spawn_shop_respawn()
+	if hud != null:
+		hud.toast("商店信标已随战线重新定位", EG.C_AMBER, 2.4)
 
 func remove_missile(m, explode: bool) -> void:
 	if m.dead:
@@ -905,6 +964,15 @@ func on_matter_collected(m: Matter) -> void:
 		pending_levels += 1
 	if pending_levels > 0 and state == State.PLAYING:
 		begin_levelup()
+
+func on_matter_flung(m: Matter) -> void:
+	stats["flung"] = int(stats.get("flung", 0)) + 1
+	Fx.sparks(fx_layer, m.position, Color(1.0, 0.35, 0.8, 0.9), 8, 150.0)
+	Audio.play("sfx_gravity", -15.0, 1.25)
+	if not volatile_hint_shown:
+		volatile_hint_shown = true
+		if hud != null:
+			hud.toast("不安定物质：靠近会被引力甩飞", EG.C_MAGENTA, 2.6)
 
 func _matter_pickup_count() -> int:
 	return int(stats["matter"])
@@ -1229,7 +1297,12 @@ func _apply_upgrade(card: Dictionary) -> void:
 
 func _zone_checks() -> void:
 	if safe_zone != null and safe_zone.active:
-		if not safe_zone.entered and safe_zone.inside(ship.position):
+		if safe_zone.unstable:
+			# The anomaly never becomes a refuge: crossing the ring springs
+			# the trap and throws the ship back out.
+			if safe_zone.inside(ship.position):
+				_spring_safe_trap()
+		elif not safe_zone.entered and safe_zone.inside(ship.position):
 			_enter_safe()
 		elif safe_zone.entered and not safe_zone.inside(ship.position):
 			_leave_safe()
@@ -1238,6 +1311,36 @@ func _zone_checks() -> void:
 			_open_shop()
 		if shop_inside and not shop_zone.inside(ship.position):
 			_leave_shop()
+
+## Fling the player out of an unstable safe zone.  The kick is stronger than the
+## speed the ship entered with, so it reads as a deliberate rejection rather
+## than a soft bounce.  The anomaly collapses immediately; a new safe zone is
+## scheduled like a normal departure.
+func _spring_safe_trap() -> void:
+	var z := safe_zone
+	if z == null:
+		return
+	var away: Vector2 = ship.position - z.position
+	if away.length() < 1.0:
+		away = Vector2.RIGHT.rotated(rng.randf() * TAU)
+	away = away.normalized()
+	var tangent: Vector2 = away.orthogonal() * (1.0 if rng.randf() < 0.5 else -1.0)
+	var speed := minf(EG.SHIP_SPEED_HARD, maxf(EG.ZONE_TRAP_IMPULSE, ship.vel.length() + 180.0))
+	ship.vel = (away + tangent * EG.ZONE_TRAP_TANGENT).normalized() * speed
+	ship.invuln = maxf(ship.invuln, 0.6)
+	safe_zone = null
+	z.remove()
+	player_hidden = false
+	safe_respawn_timer = EG.ZONE_RESPAWN
+	stats["traps"] = int(stats.get("traps", 0)) + 1
+	shake = maxf(shake, 0.9)
+	Fx.warp(fx_layer, ship.position, Color(1.0, 0.35, 0.6, 0.9))
+	Fx.sparks(fx_layer, ship.position, Color(1.0, 0.4, 0.65, 0.9), 14, 260.0)
+	Audio.play("sfx_gravity", -2.0, 0.9)
+	if hud != null:
+		hud.toast("安全区引力异常 · 你被甩飞了", EG.C_MAGENTA, 2.8)
+		hud.set_info_hidden(false)
+		hud.set_safe_mode(false)
 
 func _enter_safe() -> void:
 	safe_zone.entered = true
@@ -1348,7 +1451,7 @@ func _check_fuel(delta: float) -> void:
 	if ship.fuel > 0.5:
 		fuel_dead_timer = 0.0
 		return
-	var safe_on_screen := safe_zone != null and is_on_screen(safe_zone.position, safe_zone.clearance_radius())
+	var safe_on_screen := safe_zone != null and not safe_zone.unstable and is_on_screen(safe_zone.position, safe_zone.clearance_radius())
 	var has_fuel_item := has_item("fuel")
 	if safe_on_screen or has_fuel_item:
 		fuel_dead_timer = 0.0
@@ -1362,7 +1465,7 @@ func _check_fuel(delta: float) -> void:
 func assist_accel(s: PlayerShip, delta: float = 0.0) -> Vector2:
 	var acc := Vector2.ZERO
 	var input := _read_dir()
-	if player_hidden or (safe_zone != null and safe_zone.inside(s.position)):
+	if player_hidden or (safe_zone != null and safe_zone.active and not safe_zone.unstable and safe_zone.inside(s.position)):
 		# 高速进站：安全区扩张到 R280 后，辅助装置用足够强的反推把飞船
 		# 停在圈内，而不是让它在 0.4 秒里穿过去。默认一直刹车；只有玩家
 		# 明确把推进方向指向圈外时才放手，避免把玩家困在安全区里。
@@ -1377,7 +1480,25 @@ func assist_accel(s: PlayerShip, delta: float = 0.0) -> Vector2:
 				acc += -s.vel.normalized() * minf(EG.SHIP_SAFE_BRAKE, s.vel.length() * 6.0)
 				assist_active = true
 		return acc
-	if safe_zone != null and safe_zone.position.distance_to(s.position) < safe_zone.clearance_radius() + 420.0:
+	if safe_zone != null and safe_zone.active and safe_zone.unstable:
+		# 引力异常的安全区：外圈不是牵引而是推离。推力随距离衰减，但玩家
+		# 不主动推进时足够把他甩出圈外；越靠近中心推得越狠。
+		var band: float = safe_zone.clearance_radius() + 420.0
+		var zd: float = s.position.distance_to(safe_zone.position)
+		if zd < band:
+			var away: Vector2 = s.position - safe_zone.position
+			if away.length() < 1.0:
+				away = Vector2.RIGHT.rotated(rng.randf() * TAU)
+			away = away.normalized()
+			var tangent: Vector2 = away.orthogonal()
+			if tangent.dot(s.vel) < 0.0:
+				tangent = -tangent
+			var closeness: float = 1.0 - clampf(zd / band, 0.0, 1.0)
+			var push: float = EG.ZONE_UNSTABLE_PUSH * (0.6 + 0.4 * closeness)
+			acc += (away + tangent * EG.ZONE_UNSTABLE_TANGENT).normalized() * push
+			assist_active = true
+	if safe_zone != null and safe_zone.active and not safe_zone.unstable \
+			and safe_zone.position.distance_to(s.position) < safe_zone.clearance_radius() + 420.0:
 		if input.length() < 0.1 and s.position.distance_to(safe_zone.position) > 40.0:
 			acc += (safe_zone.position - s.position).normalized() * EG.ZONE_GRAVITY
 			assist_active = true
@@ -1455,7 +1576,7 @@ func _alarm_tick(delta: float) -> void:
 func _tutorial_step(delta: float) -> void:
 	if test_mode:
 		return
-	if Store.hints_done or tutorial_index > 6:
+	if Store.hints_done or tutorial_index > 7:
 		return
 	tutorial_timer += delta
 	var texts := [
@@ -1466,6 +1587,7 @@ func _tutorial_step(delta: float) -> void:
 		[34.0, "贴近行星时辅助装置会自动绕行加速，离开引力圈后速度保留", EG.C_CYAN],
 		[42.0, "炮塔外壳会伤害你，但它也是导弹唯一能撞的东西", EG.C_VIOLET],
 		[50.0, "辅助操作装置会平衡恒星引力；导弹没有这套装置，始终被引力弯折", EG.C_CYAN],
+		[58.0, "出生区没有安全区；击毁首个攻击者后才会解锁补给。安全区也可能引力异常", EG.C_MAGENTA],
 	]
 	if Store.touch_mode:
 		texts = [
@@ -1476,6 +1598,7 @@ func _tutorial_step(delta: float) -> void:
 			[34.0, "贴近行星时辅助装置会自动绕行加速，离开引力圈后速度保留", EG.C_CYAN],
 			[42.0, "炮塔外壳会伤害你，但它也是导弹唯一能撞的东西", EG.C_VIOLET],
 			[50.0, "辅助操作装置会平衡恒星引力；导弹没有这套装置，始终被引力弯折", EG.C_CYAN],
+			[58.0, "出生区没有安全区；击毁首个攻击者后才会解锁补给。安全区也可能引力异常", EG.C_MAGENTA],
 		]
 	if tutorial_index < texts.size() and tutorial_timer >= float(texts[tutorial_index][0]):
 		if hud != null:

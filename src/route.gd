@@ -9,6 +9,8 @@ extends RefCounted
 ##   * turns less than 90 degrees from the previous leg (never doubles back),
 ##   * keeps moving along the initial forward axis (route order is meaningful),
 ##   * has a planet anchor near its middle so the route passes a gravity well,
+##     and some legs put that anchor directly in the blank path between the two
+##     enemies as a slingshot instead of off to the side,
 ##   * has one safe zone midway between the previous and the next enemy, clear
 ##     of both sprites,
 ##   * has a shop further away from the line than that safe zone.
@@ -40,6 +42,18 @@ const BODY_OFFSET_MIN := 380.0         # inside the anchor planet's 3R influence
 const BODY_OFFSET_MAX := 480.0
 const BODY_RADIUS_MIN := 260.0
 const BODY_RADIUS_MAX := 340.0
+## Some legs put their gravity anchor directly in the blank path between the
+## two enemies, so a straight run can be turned into a slingshot.  The body is
+## smaller than a normal anchor and only takes the slot when it clears the safe
+## zone, shop and both enemy hulls; otherwise the leg falls back to the side
+## anchor above.
+const PATH_BODY_CHANCE := 0.42
+const PATH_BODY_T_MIN := 0.56
+const PATH_BODY_T_MAX := 0.78
+const PATH_BODY_OFFSET_MAX := 160.0
+const PATH_BODY_RADIUS_MIN := 140.0
+const PATH_BODY_RADIUS_MAX := 180.0
+const BODY_PAD := 260.0
 const SELF_CLEAR := 900.0              # keep new legs away from old ones
 
 var rng := RandomNumberGenerator.new()
@@ -90,13 +104,7 @@ func _append_leg() -> void:
 	var safe_t := SAFE_FIRST_T if first else SAFE_T
 	var safe := _last_pos + dir * (leg * safe_t) + perp * rng.randf_range(SAFE_OFFSET_MIN, SAFE_OFFSET_MAX)
 	var shop := _last_pos + dir * (leg * SHOP_T) + perp * rng.randf_range(SHOP_OFFSET_MIN, SHOP_OFFSET_MAX)
-	var body_pos := _last_pos + dir * (leg * BODY_T) - perp * rng.randf_range(BODY_OFFSET_MIN, BODY_OFFSET_MAX)
-	var body := {
-		"pos": body_pos,
-		"radius": rng.randf_range(BODY_RADIUS_MIN, BODY_RADIUS_MAX),
-		"variant": rng.randi_range(1, 3),
-		"chunk": Vector2i(floori(body_pos.x / CHUNK), floori(body_pos.y / CHUNK)),
-	}
+	var body := _make_route_body(_last_pos, dir, leg, perp, safe, shop, enemy)
 	encounters.append({
 		"enemy": enemy,
 		"safe": safe,
@@ -106,6 +114,53 @@ func _append_leg() -> void:
 	points.append(enemy)
 	_last_pos = enemy
 	_last_dir = dir
+
+## The single gravity anchor for a leg.  Most legs keep the doc's side anchor
+## (opposite the safe zone, 380~480 px off the line); some try to place a
+## smaller body right in the blank path between the enemies.  The path body is
+## only accepted when it clears both enemies, the safe zone, the shop and every
+## previously planned route body, so it never crowds another planned node.
+func _make_route_body(prev: Vector2, dir: Vector2, leg: float, perp: Vector2,
+		safe: Vector2, shop: Vector2, enemy: Vector2) -> Dictionary:
+	if rng.randf() < PATH_BODY_CHANCE:
+		for _i in range(16):
+			var t := rng.randf_range(PATH_BODY_T_MIN, PATH_BODY_T_MAX)
+			var r := rng.randf_range(PATH_BODY_RADIUS_MIN, PATH_BODY_RADIUS_MAX)
+			var p := prev + dir * (leg * t) + perp * rng.randf_range(-PATH_BODY_OFFSET_MAX, PATH_BODY_OFFSET_MAX)
+			if _route_body_clear(p, r, safe, shop, prev, enemy):
+				return _body_dict(p, r, true)
+	var bp := prev + dir * (leg * BODY_T) - perp * rng.randf_range(BODY_OFFSET_MIN, BODY_OFFSET_MAX)
+	var br := rng.randf_range(BODY_RADIUS_MIN, BODY_RADIUS_MAX)
+	return _body_dict(bp, br, false)
+
+func _body_dict(p: Vector2, r: float, path: bool) -> Dictionary:
+	return {
+		"pos": p,
+		"radius": r,
+		"variant": rng.randi_range(1, 3),
+		"chunk": Vector2i(floori(p.x / CHUNK), floori(p.y / CHUNK)),
+		"path": path,
+	}
+
+func _route_body_clear(p: Vector2, r: float, safe: Vector2, shop: Vector2,
+		prev: Vector2, enemy: Vector2) -> bool:
+	var zone_need: float = EG.ZONE_RADIUS + r + EG.BODY_CONTENT_MARGIN
+	if p.distance_to(safe) < zone_need or p.distance_to(shop) < zone_need:
+		return false
+	var enemy_need: float = EG.TURRET_RADIUS + r + EG.BODY_CONTENT_MARGIN
+	if p.distance_to(prev) < enemy_need or p.distance_to(enemy) < enemy_need:
+		return false
+	for enc in encounters:
+		if p.distance_to(enc["safe"]) < zone_need:
+			return false
+		if p.distance_to(enc["shop"]) < zone_need:
+			return false
+		if p.distance_to(enc["enemy"]) < enemy_need:
+			return false
+		var ab: Dictionary = enc["body"]
+		if p.distance_to(ab["pos"]) < float(ab["radius"]) + r + BODY_PAD:
+			return false
+	return true
 
 func _choose_dir() -> Vector2:
 	var dir := _last_dir.rotated(rng.randf_range(-MAX_TURN, MAX_TURN))

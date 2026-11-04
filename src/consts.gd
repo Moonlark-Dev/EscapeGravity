@@ -116,6 +116,15 @@ const XP_PER_LEVEL := 20.0
 const MATTER_BIG_CHANCE := 0.33
 const MATTER_BIG_XP := 3
 const MATTER_SMALL_XP := 1
+## Some motes are gravitationally unstable: instead of being pulled in they
+## kick away from the ship when it gets close.  They can still be caught, but
+## the player has to chase them instead of farming them by driving past.
+const MATTER_VOLATILE_CHANCE := 0.16
+const MATTER_VOLATILE_CHANCE_BIG := 0.24
+const MATTER_FLING_SPEED := 520.0
+const MATTER_FLING_DECEL := 600.0
+const MATTER_FLING_TIME := 0.9
+const MATTER_FLING_COOLDOWN := 2.4
 
 # ---- Zones ----
 const ZONE_RADIUS := 280.0           # 安全区扩张后的完整半径
@@ -124,6 +133,14 @@ const ZONE_EXPAND_TIME := 0.62       # 进入时的扩张动画时长
 const ZONE_GRAVITY := 46.0
 const ZONE_RESPAWN := 10.0
 const ZONE_ENEMY_CLEAR := 520.0     # 安全区贴图边缘与敌人外壳的最小间距
+## A minority of safe zones are gravity anomalies: the ring is tinted magenta,
+## pushes an idle ship away instead of pulling it in, and ejects anyone who
+## reaches the centre.  It never refuels or hides threat information.
+const ZONE_UNSTABLE_CHANCE := 0.24
+const ZONE_UNSTABLE_PUSH := 300.0
+const ZONE_UNSTABLE_TANGENT := 0.35
+const ZONE_TRAP_IMPULSE := 520.0
+const ZONE_TRAP_TANGENT := 0.45
 const SAFE_FUEL_DIST := 1875.0      # placement band: ~12.5 s of full-thrust delta-v (50 fuel)
 const SHOP_DIST_MIN := 2800.0
 const SHOP_DIST_MAX := 4200.0

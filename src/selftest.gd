@@ -25,6 +25,7 @@ func run_tests() -> void:
 	_test_streaming()
 	_test_route()
 	_test_safe_zone_clearance()
+	_test_shop_binding()
 	_test_body_clearance()
 	_test_initial_map()
 	var bot := await _test_bot_playability()
@@ -394,6 +395,22 @@ func _test_meteor_matter() -> void:
 	_step(r, 0.4)
 	var n1 := near.position.distance_to(r.ship.position)
 	_check("190 吸取半径：150 内被吸引", n1 < n0 - 5.0, "n0=%.0f n1=%.0f" % [n0, n1])
+
+	# Volatile matter: approaching it kicks it away instead of absorbing it.
+	var vm := Matter.new()
+	vm.run = r
+	vm.position = r.ship.position + Vector2(150, 0)
+	vm.volatile = true
+	r.world.add_child(vm)
+	r.matters.append(vm)
+	var vd0 := vm.position.distance_to(r.ship.position)
+	_step(r, 0.5)
+	var vd1 := vm.position.distance_to(r.ship.position)
+	_check("不安定物质被甩飞而不是吸收",
+		vd1 > vd0 + 60.0 and not vm.collected,
+		"d0=%.0f d1=%.0f collected=%s" % [vd0, vd1, str(vm.collected)])
+	_check("不安定物质甩飞进入冷却", r.stats.get("flung", 0) >= 1 and vm._fling_cd > 0.0,
+		"flung=%d cd=%.2f" % [int(r.stats.get("flung", 0)), vm._fling_cd])
 	_check("每 20 XP 升级", EG.XP_PER_LEVEL == 20.0)
 	_kill(r)
 
@@ -402,7 +419,7 @@ func _test_zones() -> void:
 	_clear_arena(r)
 	r.ship.position = Vector2.ZERO
 	r.ship.fuel = 40.0
-	var z := r.make_zone("safe", Vector2(900, 0))
+	var z := r.make_zone("safe", Vector2(900, 0), 0)
 	r.safe_zone = z
 	_check("安全区进入前只比飞船大一点", absf(z.radius - EG.ZONE_ENTRY_RADIUS) < 0.01
 		and EG.ZONE_ENTRY_RADIUS > EG.SHIP_RADIUS and EG.ZONE_ENTRY_RADIUS < EG.ZONE_RADIUS,
@@ -424,7 +441,7 @@ func _test_zones() -> void:
 	# High-speed entry: the assist must brake hard enough to stop inside R280.
 	var rz := _new_run(120)
 	_clear_arena(rz)
-	var z2 := rz.make_zone("safe", Vector2.ZERO)
+	var z2 := rz.make_zone("safe", Vector2.ZERO, 0)
 	rz.safe_zone = z2
 	rz.ship.position = Vector2(-200, 0)
 	rz.ship.vel = Vector2(600, 0)
@@ -445,6 +462,35 @@ func _test_zones() -> void:
 	_check("商店打开 3 件商品且不回燃料", r.state == Run.State.SHOP and r.shop_stock.size() == 3 and absf(r.ship.fuel - 100.0) < 0.01)
 	r.close_shop()
 	_check("关闭商店回到游戏", r.state == Run.State.PLAYING)
+
+	# Gravity anomaly: an unstable safe zone pushes an idle ship away, is not a
+	# fuel refuge, and ejects anyone who reaches its centre.
+	var ru := _new_run(125)
+	_clear_arena(ru)
+	ru.ship.position = Vector2(300, 0)
+	ru.ship.vel = Vector2.ZERO
+	ru.auto_input = Vector2.ZERO
+	var uz := ru.make_zone("safe", Vector2(900, 0), 1)
+	ru.safe_zone = uz
+	ru.camera.position = Vector2.ZERO
+	_check("引力异常安全区有独立的视觉与状态", uz.unstable and uz._pulse != null and uz._pulse.modulate.r > 0.9)
+	var push := ru.assist_accel(ru.ship)
+	_check("引力异常安全区外圈把飞船推离而不是吸入", push.x < -60.0,
+		"acc=(%.0f, %.0f)" % [push.x, push.y])
+	ru.ship.fuel = 0.0
+	ru.fuel_dead_timer = 0.0
+	ru._check_fuel(0.5)
+	_check("引力异常安全区不算燃料保护", absf(ru.fuel_dead_timer - 0.5) < 0.01,
+		"timer=%.2f" % ru.fuel_dead_timer)
+	ru.fuel_dead_timer = 0.0
+	ru.ship.position = uz.position
+	ru._zone_checks()
+	_check("进入引力异常圈会被甩飞",
+		ru.safe_zone == null and ru.ship.vel.length() >= EG.ZONE_TRAP_IMPULSE - 1.0
+		and not ru.player_hidden and absf(ru.safe_respawn_timer - 10.0) < 0.01,
+		"v=%.0f hidden=%s timer=%.1f" % [ru.ship.vel.length(), str(ru.player_hidden), ru.safe_respawn_timer])
+	_check("引力异常甩飞后重新排队安全区", int(ru.stats.get("traps", 0)) == 1 and absf(ru.safe_respawn_timer - 10.0) < 0.01)
+	_kill(ru)
 	_kill(r)
 
 func _test_inventory_and_upgrades() -> void:
@@ -721,6 +767,8 @@ func _test_route() -> void:
 	var shop_farther := true
 	var body_near := true
 	var safe_clear := 1.0e9
+	var path_bodies := 0
+	var path_ok := true
 	var prev_enemy: Vector2 = route.origin
 	var first_enc := true
 	for enc in route.encounters:
@@ -740,6 +788,23 @@ func _test_route() -> void:
 		var body_lat: float = absf((enc["body"]["pos"] - prev_enemy).cross(dir))
 		if body_lat >= float(enc["body"]["radius"]) * 2.0:
 			body_near = false
+		var body: Dictionary = enc["body"]
+		if bool(body.get("path", false)):
+			path_bodies += 1
+			var body_rel: Vector2 = body["pos"] - prev_enemy
+			var bt: float = body_rel.dot(dir) / maxf(seg.length(), 1.0)
+			var blat: float = absf(body_rel.cross(dir))
+			var br: float = float(body["radius"])
+			if bt < 0.50 or bt > 0.85 or blat > RunRoute.PATH_BODY_OFFSET_MAX + 1.0:
+				path_ok = false
+			if br < RunRoute.PATH_BODY_RADIUS_MIN - 0.1 or br > RunRoute.PATH_BODY_RADIUS_MAX + 0.1:
+				path_ok = false
+			var zone_need: float = EG.ZONE_RADIUS + br + EG.BODY_CONTENT_MARGIN
+			if body["pos"].distance_to(enc["safe"]) < zone_need or body["pos"].distance_to(enc["shop"]) < zone_need:
+				path_ok = false
+			var enemy_need: float = EG.TURRET_RADIUS + br + EG.BODY_CONTENT_MARGIN
+			if body["pos"].distance_to(prev_enemy) < enemy_need or body["pos"].distance_to(enc["enemy"]) < enemy_need:
+				path_ok = false
 		first_enc = false
 		prev_enemy = enc["enemy"]
 	_check("两个敌人位置之间必有安全区", safe_between)
@@ -748,6 +813,8 @@ func _test_route() -> void:
 	_check("安全区离两侧敌人都足够远", safe_clear >= 1140.0, "min=%.0f" % safe_clear)
 	_check("商店比安全区离路线更远", shop_farther)
 	_check("每段路线经过某个天体的引力圈", body_near)
+	_check("两个敌人之间的空白路径会生成加速天体", path_bodies >= 1, "n=%d" % path_bodies)
+	_check("加速天体位于空白路径且避开安全区/商店/敌人", path_ok)
 
 	var anchor: Dictionary = route.encounters[6]["body"]
 	r.galaxy.ensure_around(anchor["pos"])
@@ -773,6 +840,25 @@ func _test_safe_zone_clearance() -> void:
 	_check("安全区避开当前敌人（贴图留间隙）", nudged.distance_to(e.position) >= want - 1.0,
 		"d=%.0f want=%.0f" % [nudged.distance_to(e.position), want])
 	_check("已经够远的安全区点不被挪动", kept.distance_to(e.position + Vector2(want, 0)) < 1.0)
+	_kill(r)
+
+func _test_shop_binding() -> void:
+	var r := _new_run(126)
+	_clear_arena(r)
+	r.depth = 1
+	var old_pos := Vector2(3000, 0)
+	r.shop_zone = r.make_zone("shop", old_pos)
+	r.shop_bound_depth = 1
+	var e1 := _make_enemy(r, Vector2(0, -1000))
+	r.kill_enemy(e1)
+	_check("商店所属敌人被击败后不立即刷新",
+		r.depth == 2 and r.shop_zone != null and r.shop_zone.position.distance_to(old_pos) < 1.0)
+	var e2 := _make_enemy(r, Vector2(0, -1200))
+	r.kill_enemy(e2)
+	_check("击败下一个敌人后商店自动重新生成",
+		r.depth == 3 and r.shop_zone != null and r.shop_zone.position.distance_to(old_pos) > 100.0,
+		"depth=%d d=%.0f" % [r.depth, r.shop_zone.position.distance_to(old_pos) if r.shop_zone != null else -1.0])
+	_check("重新生成的商店绑定到新深度", r.shop_bound_depth == 3 and r.route.next_shop >= 1)
 	_kill(r)
 
 ## The reported bug: a safe zone or an enemy could be born inside / hugging a
@@ -821,7 +907,7 @@ func _test_body_clearance() -> void:
 	var r4 := _new_run(124)
 	_clear_arena(r4)
 	var zpos := Vector2(4000, 0)
-	r4.safe_zone = r4.make_zone("safe", zpos)
+	r4.safe_zone = r4.make_zone("safe", zpos, 0)
 	_check("新天体不会生成在安全区上", not r4.galaxy.body_fits(zpos, 300.0, 400.0, true))
 	_check("天体最终落地校验拒绝内容区", r4.galaxy._add_body(zpos, 300.0, "planet", 1, false) == null)
 	_check("安全区之外仍能落天体", r4.galaxy.body_fits(Vector2(100000, 100000), 300.0, 400.0, true))
@@ -834,16 +920,24 @@ func _test_initial_map() -> void:
 	r.test_mode = false
 	r._initial_spawn()
 	var route: RunRoute = r.galaxy.route
-	_check("初始安全区落在路线预置点", r.safe_zone != null and r.safe_zone.position.distance_to(route.safe_at(0)) < 1500.0)
+	_check("出生点没有安全区", r.safe_zone == null and not r.safe_unlocked and route.next_safe == 0)
+	_check("出生点直接生成敌人", r.current_enemy != null)
 	_check("初始商店落在路线预置点", r.shop_zone != null and r.shop_zone.position.distance_to(route.shop_at(0)) < 1500.0)
-	var shop_far := (r.shop_zone != null and r.safe_zone != null and
-		r.shop_zone.position.distance_to(r.ship.position) > r.safe_zone.position.distance_to(r.ship.position))
-	_check("初始商店比安全区离玩家更远", shop_far)
+	_check("初始商店绑定到当前敌人深度", r.shop_bound_depth == 1)
 	var init_d: float = -1.0
 	if r.current_enemy != null:
 		init_d = r.current_enemy.position.distance_to(route.enemy_at(0))
 	_check("首个敌人落在路线预置点", init_d >= 0.0 and init_d < 2200.0, "d=%.0f" % init_d)
 	_check("地图生成时填充了物质", r.matters.size() > 50, "matter=%d" % r.matters.size())
+	# First kill unlocks the safe zone, skipping the spawn-side safe node.
+	var first_safe: Vector2 = route.safe_at(0)
+	var e: Enemy = r.current_enemy
+	r.kill_enemy(e)
+	_check("击毁首个敌人后解锁安全区", r.safe_unlocked and absf(r.safe_respawn_timer - EG.ZONE_RESPAWN) < 0.01)
+	_check("解锁时跳过出生点旁的安全区节点", route.next_safe == 1 and route.safe_at(1) != first_safe)
+	r._spawn_safe_respawn()
+	_check("解锁后的安全区出现在前方路线节点", r.safe_zone != null and
+		r.safe_zone.position.distance_to(route.safe_at(1)) < 1500.0)
 	_kill(r)
 
 func _test_bot_playability() -> Dictionary:

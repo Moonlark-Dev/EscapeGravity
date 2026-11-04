@@ -741,14 +741,15 @@ func _refresh_radar() -> void:
 	var bi := 0
 	var targets: Array = []
 	if run.safe_zone != null and run.safe_zone.active:
-		targets.append({"pos": run.safe_zone.position, "tex": "radar_zone"})
+		var safe_tint := Color(1.0, 0.38, 0.58) if run.safe_zone.unstable else Color.WHITE
+		targets.append({"pos": run.safe_zone.position, "tex": "radar_zone", "tint": safe_tint})
 	if run.shop_zone != null and run.shop_zone.active:
-		targets.append({"pos": run.shop_zone.position, "tex": "radar_shop"})
+		targets.append({"pos": run.shop_zone.position, "tex": "radar_shop", "tint": Color.WHITE})
 	for m in run.missiles:
 		if not m.dead:
-			targets.append({"pos": m.position, "tex": "radar_threat"})
+			targets.append({"pos": m.position, "tex": "radar_threat", "tint": Color.WHITE})
 	if run.current_enemy != null and not run.current_enemy.dead and run.current_enemy.discovered:
-		targets.append({"pos": run.current_enemy.position, "tex": "radar_enemy"})
+		targets.append({"pos": run.current_enemy.position, "tex": "radar_enemy", "tint": Color.WHITE})
 	for t in targets:
 		if bi >= _radar_blips.size():
 			break
@@ -760,7 +761,7 @@ func _refresh_radar() -> void:
 		spr2.size = Vector2(10, 10)
 		spr2.position = center + rel - Vector2(5, 5)
 		spr2.visible = true
-		spr2.modulate = Color.WHITE
+		spr2.modulate = t.get("tint", Color.WHITE)
 		bi += 1
 	for i in range(bi, _radar_blips.size()):
 		_radar_blips[i].visible = false

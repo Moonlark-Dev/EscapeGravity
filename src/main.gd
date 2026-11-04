@@ -292,7 +292,7 @@ func _run_shots(dir: String) -> void:
 
 	# safe zone
 	run.paused = false
-	var z = run.make_zone("safe", run.ship.position)
+	var z = run.make_zone("safe", run.ship.position, 0)
 	run.safe_zone = z
 	for m in run.missiles.duplicate():
 		m.remove()

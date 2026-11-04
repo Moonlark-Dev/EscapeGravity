@@ -7,6 +7,10 @@ extends Node2D
 ## its centre triggers the expansion: the trigger radius jumps straight to the
 ## full ZONE_RADIUS (so the player can never drift back out mid-animation)
 ## while the ring itself animates open with a short shockwave.
+##
+## Some safe zones are gravity anomalies (`unstable`): the ring is tinted
+## magenta, pushes an idle ship away instead of pulling it in, and ejects
+## anyone who crosses the ring.  They never refuel or hide threats.
 
 var run
 var kind := "safe"
@@ -14,6 +18,7 @@ var radius := EG.ZONE_ENTRY_RADIUS
 var active := true
 var entered := false
 var used := false
+var unstable := false
 var _ring: Sprite2D
 var _fill: Sprite2D
 var _station: Sprite2D
@@ -28,19 +33,33 @@ func _ready() -> void:
 		_full_radius = EG.ZONE_RADIUS
 		_fill = Assets.world_sprite("safezone_fill", true)
 		_fill.scale = Vector2.ONE * (_full_radius / 280.0 * 1.06)
-		_fill.modulate = Color(0.35, 1.0, 0.78, 0.10)
+		if unstable:
+			_fill.modulate = Color(1.0, 0.30, 0.48, 0.10)
+		else:
+			_fill.modulate = Color(0.35, 1.0, 0.78, 0.10)
 		add_child(_fill)
 		_ring = Assets.world_sprite("safezone")
 		_ring.scale = Vector2.ONE * (_full_radius / 280.0)
+		if unstable:
+			_ring.modulate = Color(1.0, 0.45, 0.68, 1.0)
 		add_child(_ring)
 		_pulse = Assets.world_sprite("safezone", true)
 		_pulse.scale = _ring.scale
-		_pulse.modulate = Color(1.0, 1.0, 1.0, 0.0)
+		if unstable:
+			_pulse.modulate = Color(1.0, 0.35, 0.55, 0.0)
+		else:
+			_pulse.modulate = Color(1.0, 1.0, 1.0, 0.0)
 		_pulse.visible = false
 		add_child(_pulse)
-		# The marker starts as a small ring around the ship-sized entry point;
-		# every sprite is authored at full size and scaled down as a whole.
-		scale = Vector2.ONE * (radius / _full_radius)
+		# A stable marker starts as a small ring around the ship-sized entry
+		# point; every sprite is authored at full size and scaled down as a
+		# whole.  An anomaly is already fully open: its warning ring must be
+		# readable from a distance, and the whole R280 area is the trap.
+		if unstable:
+			radius = _full_radius
+			scale = Vector2.ONE
+		else:
+			scale = Vector2.ONE * (radius / _full_radius)
 	else:
 		_full_radius = EG.ZONE_RADIUS
 		radius = _full_radius
@@ -59,6 +78,13 @@ func step(delta: float) -> void:
 		_ring.rotation += delta * 0.06
 		_ring.modulate.a = 0.85 + 0.15 * sin(_t * 1.4)
 		_fill.modulate.a = (0.20 if entered else 0.09) + 0.02 * sin(_t * 2.0)
+	if unstable and _pulse != null:
+		# A visible warning pulse: the player can read the anomaly before the
+		# repulsion kicks in, so the fling is a risk, not a gotcha.
+		_pulse.visible = true
+		_pulse.rotation += delta * 0.35
+		_pulse.scale = _ring.scale * (0.94 + 0.06 * sin(_t * 2.6))
+		_pulse.modulate = Color(1.0, 0.35, 0.55, 0.20 + 0.14 * sin(_t * 3.4))
 	if _station != null:
 		_station.rotation += delta * 0.09
 		_station.position = Vector2(0, sin(_t * 1.1) * 4.0)
