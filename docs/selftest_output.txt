@@ -2,23 +2,33 @@ Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
 
 === Escape Gravity selftest ===
 PASS  飞船极速 150   speed=150.0
-PASS  燃料上限 500 / 推进 4/s   fuel=484.0
+PASS  推进到极速只消耗加速所需燃料   fuel=498.4 want=498.4
+PASS  松开推进 2 秒仍保持 150（太空无阻力）   speed=150.0
+PASS  滑行不消耗燃料   fuel=498.4
+PASS  超过引擎极速的惯性被保留   speed=400.0
+PASS  极速后继续按住推进不耗燃料   fuel=500.0
 PASS  加力极速 ≈192   speed=192.0
-PASS  加力燃料 4.8/s（1.2×）   fuel=495.2
+PASS  加力燃料按实际加速计（≈4.8/s 满推力）   fuel=499.2 want=499.2
 PASS  初始加力槽 6.6s（旧 2.2s 的三倍）   cap=6.60
-PASS  加力推力 3×   plain=6.31 boost=18.93
+PASS  加力结束后保持 192 惯性   speed=192.0
+PASS  加力推力 3×   plain=6.33 boost=19.00
 PASS  停止加力 0.7s 后加力槽恢复   before=0.60 after=1.27
 PASS  推进中（未加力）加力槽同样回充   before=1.40 after=2.36
-PASS  按住加力耗尽后不会在 0.22 阈值抖动点火   meter=0.77 ready=false
+PASS  按住加力耗尽后不会在 0.22 阈值抖动点火   meter=0.80 ready=false
 PASS  松开加力后加力槽重新可用
 PASS  飞船碰撞半径 40 / 护盾 20
 PASS  天体表面引力 ≈285   g=285.4
 PASS  内圈 0.85r 夹紧 ≈395   g=395.0
 PASS  表面引力即 285   g=285.4
-PASS  影响半径 2r 之外引力为 0
-PASS  辅助操作装置自动平衡恒星引力（远离恒星）   ship=0.000 full=30.53
-PASS  恒星半径 800、影响 1600
+PASS  影响半径 3r 之外引力为 0
+PASS  辅助操作装置自动平衡恒星引力（远离恒星）   ship=0.000 full=81.17
+PASS  恒星半径 800、影响 2400
 PASS  锁定中的导弹同样持续受天体引力   bend=0.11rad
+PASS  环绕天体可获得超过引擎极速的速度   max=278.4
+PASS  环绕过程不会钻进天体表面   min_surface=181
+PASS  离开引力圈后仍高于基础极速   speed=187.8
+PASS  深空滑行 2 秒保持 300   speed=300.0
+PASS  滑行不耗燃料   fuel=500.0
 PASS  导弹速度 150
 PASS  导弹转向率 0.525 rad/s   turn=0.525
 PASS  导弹碰撞半径 12
@@ -45,6 +55,7 @@ PASS  进入安全区补满燃料
 PASS  进入安全区清除导弹
 PASS  进入安全区隐藏威胁信息
 PASS  离开安全区后消失并在 10s 后刷新
+PASS  高速进入安全区会被辅助装置刹停   v=11.2 d=86 hidden=true
 PASS  商店打开 3 件商品且不回燃料
 PASS  关闭商店回到游戏
 PASS  物品栏基础 2 格
@@ -71,7 +82,11 @@ PASS  首个敌人位于未探索区域
 PASS  安全区在 50 燃料距离内刷新
 PASS  安全区使用路线预置点
 PASS  敌人按路线顺序取生成点
-PASS  第二个敌人比第一个更靠路线前方
+PASS  第二�WARNING: 2 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2536)
+ERROR: 1 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:822)
+�敌人比第一个更靠路线前方
 PASS  敌人生成时不可见且未被发现
 PASS  远离玩家时敌人按兵不动   d=0.0
 PASS  仇恨范围外不会开火
@@ -85,7 +100,7 @@ PASS  未发现导弹单独上限 2、不占直射名额   sneak=2 locked=0
 PASS  未发现导弹的射入方向偏向敌人   95/120
 PASS  进入屏幕即被发现
 PASS  发现后贴图淡入   a=0.05
-PASS  远离出生点仍有天体区块   near=24 total=39
+PASS  远离出生点仍有天体区块   near=24 total=38
 PASS  初始燃料 500   fuel=500
 PASS  地图生成阶段预置隐藏路线   n=12
 PASS  路线按滚动窗口继续预生成   n=24
@@ -98,17 +113,27 @@ PASS  路线段所在区块保证有天体
 PASS  敌人位置按路线顺序消耗
 PASS  安全区避开当前敌人（贴图留间隙）   d=1220 want=1220
 PASS  已经够远的安全区点不被挪动
+PASS  敌人不会生成在天体内部或贴脸   d=1540 need=1380
+PASS  敌人生成点完全在天体表面之外
+PASS  安全区不会生成在天体内部或贴脸   d=760 need=740
+PASS  安全区完整落在天体表面之外
+PASS  商店不会生成在天体内部或贴脸   d=760 need=740
+PASS  新天体不会生成在安全区上
+PASS  天体最终落地校验拒绝内容区
+PASS  安全区之外仍能落天体
+PASS  路线预置安全点预留了天体空间
+PASS  玩家所在位置不会突然生成天体
 PASS  初始安全区落在路线预置点
 PASS  初始商店落在路线预置点
 PASS  初始商店比安全区离玩家更远
-PASS  首个敌人落在路线预置点
+PASS  首个敌人落在路线预置点   d=1769
 PASS  地图生成时填充了物质   matter=150
-  bot seed=200 orbit=700 invuln=false -> hp=50 hits=0 t=60.0s state=0 dmg=体表
-  bot seed=300 orbit=700 invuln=true -> hp=0 hits=2 t=29.9s state=0 dmg=
-  bot seed=201 orbit=790 invuln=false -> hp=50 hits=0 t=6.8s state=4 dmg=导弹
-  bot seed=301 orbit=790 invuln=true -> hp=0 hits=2 t=29.4s state=0 dmg=
-  bot seed=202 orbit=880 invuln=false -> hp=0 hits=2 t=31.8s state=0 dmg=
-  bot seed=302 orbit=880 invuln=true -> hp=25 hits=1 t=60.0s state=0 dmg=导弹
-PASS  无敌机器人能靠诱导击毁炮塔（验证核心循环）   invuln kills 2/3
+  bot seed=200 orbit=700 invuln=false -> hp=50 hits=0 t=21.5s state=4 dmg=导弹
+  bot seed=300 orbit=700 invuln=true -> hp=0 hits=2 t=56.6s state=0 dmg=导弹
+  bot seed=201 orbit=790 invuln=false -> hp=50 hits=0 t=8.5s state=4 dmg=导弹
+  bot seed=301 orbit=790 invuln=true -> hp=0 hits=2 t=22.9s state=0 dmg=导弹
+  bot seed=202 orbit=880 invuln=false -> hp=0 hits=2 t=10.9s state=0 dmg=
+  bot seed=302 orbit=880 invuln=true -> hp=0 hits=2 t=11.4s state=0 dmg=
+PASS  无敌机器人能靠诱导击毁炮塔（验证核心循环）   invuln kills 3/3
 PASS  普通机器人也能至少击毁一次炮塔   normal kills 1/3
-RESULT: 104 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 60.0166666666645, "state": 0 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 29.8833333333329, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 0, "time": 6.83333333333331, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 29.4333333333329, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 31.7833333333328, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": false, "hits": 1, "time": 60.0166666666645, "state": 0 }], "invuln_kills": 2, "normal_kills": 1 })
+RESULT: 125 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 21.5333333333334, "state": 4 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 56.6166666666647, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 0, "time": 8.48333333333333, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 22.8666666666666, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 10.9000000000001, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": true, "hits": 2, "time": 11.3833333333335, "state": 0 }], "invuln_kills": 3, "normal_kills": 1 })

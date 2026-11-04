@@ -1,6 +1,6 @@
 # QA / 验证记录
 
-日期：2026-11-03 · 版本：1.0.4 · 引擎：Godot 4.7.2 stable
+日期：2026-11-04 · 版本：1.0.5 · 引擎：Godot 4.7.2 stable
 环境：Linux x86_64 · Godot headless + Xvfb/llvmpipe · JDK 17 (Temurin 17.0.21) · Android SDK build-tools 35 / platform 35
 
 ---
@@ -11,23 +11,25 @@
 godot --headless --path . -- --selftest
 ```
 
-完整输出：`docs/selftest_output.txt`（104 项断言 + 机器人明细）。
+完整输出：`docs/selftest_output.txt`（125 项断言 + 机器人明细）。
 
 ```
-RESULT: 104 checks, 0 failed
+RESULT: 125 checks, 0 failed
 ```
 
 **导出包内自测**（同一套脚本，从内嵌 PCK 运行）：
 
 ```bash
 ./build/linux/EscapeGravity.x86_64 --headless -- --selftest
-# RESULT: 104 checks, 0 failed
+# RESULT: 125 checks, 0 failed
 ```
 
 覆盖面：
 
-- 物理：极速 150、加力 3× 推力 / 192 极速、燃料上限 500 / 推进 4/s / 加力 4.8/s、初始加力槽 6.6s（旧 2.2s 的三倍）与 0.7s 后回充（推进中同样回充，耗尽需先松开）、碰撞半径 40 / 12 / 护盾 20
-- 引力：表面 285、内圈 395、2R 截止、辅助操作装置平衡恒星引力、锁定中的导弹仍受引力弯折（0.6×）
+- 物理：太空无阻力（松开推进 2 秒仍保持速度）、引擎极速 150（超过后推进不把惯性压回）、加力 3× 推力 / 192 极速、燃料按实际 Δv 计（到极速后按住推进不耗油，滑行免费）、加力槽 6.6s 与 0.7s 后回充（推进中同样回充，耗尽需先松开）、碰撞半径 40 / 12 / 护盾 20
+- 环绕加速：1.9R 切线进入行星引力圈，20 秒内峰值速度 >250、离开后仍 >180；深空滑行 300 速度 2 秒不衰减、不耗油
+- 安全区停靠：以 600 速度进入 R78 触发圈，扩张到 R280 后辅助装置刹停，最终速度 <20 且仍在圈内
+- 引力：表面 285、内圈 395、3R 截止、辅助操作装置平衡恒星引力、锁定中的导弹仍受引力弯折（0.6×）
 - 导弹：速度/转向率/5s 脱锁/半径、命中 25、过载 2.5s、两发摧毁 50 血炮塔
 - 陨石：0.5 磨损、撞飞后对敌 5、受飞船引力
 - 物质：大 3 XP、超 190 不吸、150 内被吸、20 XP/级
@@ -37,6 +39,7 @@ RESULT: 104 checks, 0 failed
 - 技能：脉冲 10 燃料 / 200 冲量 / 脱锁 / 5s CD / 按移动方向左右偏转（静止按面向）；诱饵抵达脱锁；干扰弹偏转
 - 死亡：燃料耗尽 12s 判负、导弹 25 击穿 20 护盾、复活币恢复 8
 - 地图：隐藏路线不回头（每段沿主方向前进）、每段经过天体引力圈、两个敌人之间必有安全区、安全区离两侧敌人≥1150 且刷新时避开当前敌人、商店比安全区离路线更远；初始安全区/商店/敌人按路线落位；敌人按路线顺序刷新
+- 生成间距：天体压住安全区/商店/敌人时环形搜索重新落点（安全区按 R280+160、敌人按外壳+160）；新天体不会生成在安全区/玩家/路线预置节点上；敌人被天体挤到会沿径向推出表面
 - 入场：视野内导弹从炮塔外壳（R+14）出膛；已发现的敌人在视野外仍为侧向 820px；未发现时走屏幕外偷袭弧线
 - 流式：距原点 120000px 加载区块仍有 ≥3 个天体
 
@@ -44,16 +47,17 @@ RESULT: 104 checks, 0 failed
 
 | 尝试 | 轨道半径 | 无敌 | 结果 | 命中 | 用时 |
 |---|---|---|---|---|---|
-| seed 200 | 700 | 否 | 未击毁（60s 上限，撞天体） | 0 | 60.0s |
-| seed 300 | 700 | 是 | **击毁** | 2 | 29.9s |
-| seed 201 | 790 | 否 | 失败（被偷袭弹击穿） | 0 | 6.8s |
-| seed 301 | 790 | 是 | **击毁** | 2 | 29.4s |
-| seed 202 | 880 | 否 | **击毁** | 2 | 31.8s |
-| seed 302 | 880 | 是 | 未击毁（60s 上限，1 次命中） | 1 | 60.0s |
+| seed 200 | 700 | 否 | 失败（被导弹击穿） | 0 | 21.5s |
+| seed 300 | 700 | 是 | **击毁** | 2 | 56.6s |
+| seed 201 | 790 | 否 | 失败（被导弹击穿） | 0 | 8.5s |
+| seed 301 | 790 | 是 | **击毁** | 2 | 22.9s |
+| seed 202 | 880 | 否 | **击毁** | 2 | 10.9s |
+| seed 302 | 880 | 是 | **击毁** | 2 | 11.4s |
 
-- 无敌机器人：**2/3 击毁**，证明“诱导导弹撞敌人”的核心循环成立。
-- 普通机器人：1/3 击毁；一次被未发现阶段的偷袭弹击穿。它只会“绕圈 + 直射导弹贴脸时脉冲”，不会用加力脱离、干扰弹、诱饵、安全区；人类有更多手段。
-- 结论：机制可达成；未发现阶段的偷袭火力提高了压力，但没有破坏诱导循环。
+- 无敌机器人：**3/3 击毁**，证明“诱导导弹撞敌人”的核心循环成立。
+- 普通机器人：1/3 击毁；另外两次被导弹击穿。它只会“绕圈 + 直射导弹贴脸时脉冲”，不会用加力脱离、干扰弹、诱饵、安全区；人类有更多手段。
+- 机器人测试在无天体干扰的空场地运行（`run.no_stream=true` + 清空天体），只验证诱导循环；天体引力、环绕加速与高速停靠由独立断言覆盖。
+- 结论：机制可达成；未发现阶段的偷袭火力与新惯性一起提高了操作压力，但没有破坏诱导循环。
 
 ---
 
@@ -70,7 +74,7 @@ xvfb-run -a -s "-screen 0 1280x720x24" \
 
 - 退出码 0；11 张截图全部生成（**由导出包运行产生，不是编辑器**），已复制到 `docs/shots/`。
 - 标题、中文字体、贴图、音频、脚本均从内嵌 PCK 加载；无缺失贴图警告。
-- `build/linux/EscapeGravity.x86_64` = 96,340,400 bytes，ELF x86-64。
+- `build/linux/EscapeGravity.x86_64` = 96,346,880 bytes，ELF x86-64。
 - 触屏 20:9 截图另用 `--resolution 2400x1080 -- --touch --shots=...` 生成，取 `04_battle` 作为 `docs/shots/12_touch.png`。
 
 ### 2.2 Windows
@@ -81,7 +85,7 @@ file build/windows/EscapeGravity.exe
 python3 -c "d=open(...).read(); print(b'GDPC' in d[-4096:])"   # True
 ```
 
-- 单文件、内嵌 PCK，无外部依赖；132,024,448 bytes。
+- 单文件、内嵌 PCK，无外部依赖；132,030,928 bytes。
 - 未做商业代码签名（没有证书），首次运行会有 SmartScreen 提示。
 
 ### 2.3 Android
@@ -92,7 +96,7 @@ apksigner verify --verbose --print-certs build/android/EscapeGravity.apk
 ```
 
 ```
-package: name='com.escapegravity.game' versionCode='5' versionName='1.0.4'
+package: name='com.escapegravity.game' versionCode='6' versionName='1.0.5'
 minSdkVersion:'24'
 targetSdkVersion:'36'
 native-code: 'arm64-v8a'
@@ -105,9 +109,16 @@ Signer #1 certificate DN: CN=Escape Gravity, OU=Games, O=Escape Gravity, L=Shang
 Signer #1 certificate SHA-256: ddd8a610132d862301c8987f18f545a6eefdf58f0617547d7fad3cec0113f5ff
 ```
 
-- APK：49,550,584 bytes；含全部 `assets/`（贴图、字体、WAV、脚本 `.gdc`、场景）。
+- APK：49,558,776 bytes；含全部 `assets/`（贴图、字体、WAV、脚本 `.gdc`、场景）。
 - 权限：无危险权限（只有 Godot/模板默认项）。
 - 未在真机运行（本机无 Android 设备）；静态检查 + 签名验证通过，Linux 导出包已验证同一 PCK 的运行时行为。
+
+### 2.4 OpenList 分发
+
+- 已上传 `dist/EscapeGravity-1.0.5-android-arm64.apk` 到 NAS 的 `/vol1/1000/MyFiles/Public/`。
+- 远端大小 49,558,776 bytes、SHA-256 `0cc82151…75d1d9`，与本地一致。
+- 直链 HEAD 返回 `200 application/vnd.android.package-archive`，`content-length=49558776`：
+  <https://files.thisisxd.top/d/EscapeGravity-1.0.5-android-arm64.apk>
 
 ---
 
