@@ -111,34 +111,30 @@ const METEOR_SPEED_MAX := 210.0
 const METEOR_SPAWN_DIST := 900.0
 
 # ---- Matter / XP ----
-const MATTER_ABSORB := 190.0
+const MATTER_ABSORB := 240.0
 const XP_PER_LEVEL := 20.0
 const MATTER_BIG_CHANCE := 0.33
 const MATTER_BIG_XP := 3
 const MATTER_SMALL_XP := 1
-## The tractor beam is finite: a fast tangential pass can whip a mote away
-## instead of capturing it.  This is a speed/angle trajectory effect shared by
-## every mote.
-const MATTER_FLING_SHIP_SPEED := 240.0
-const MATTER_FLING_HEADING_DOT := 0.55
-const MATTER_FLING_IMPULSE := 360.0
-const MATTER_FLING_DECEL := 600.0
-const MATTER_FLING_TIME := 0.65
-const MATTER_FLING_COOLDOWN := 1.2
+## The tractor must outrun a gravity-assisted ship.  The speed cap is above
+## SHIP_SPEED_HARD and the pull is strong at every range, so a mote is never
+## left behind (or "flung away") when the player passes at high speed.
+const MATTER_TRACTOR_SPEED := 900.0
+const MATTER_TRACTOR_PULL_NEAR := 1400.0
+const MATTER_TRACTOR_PULL_FAR := 400.0
+const MATTER_COLLECT_RADIUS := 28.0
+const MATTER_TRACTOR_LOCK := 4.0
 
 # ---- Zones ----
 const ZONE_RADIUS := 280.0           # 安全区扩张后的完整半径
 const ZONE_ENTRY_RADIUS := 78.0      # 进入前只比飞船大一点，玩家到中心才触发扩张
 const ZONE_EXPAND_TIME := 0.62       # 进入时的扩张动画时长
-const ZONE_GRAVITY := 46.0
+const ZONE_GRAVITY := 120.0
 const ZONE_RESPAWN := 10.0
 const ZONE_ENEMY_CLEAR := 520.0     # 安全区贴图边缘与敌人外壳的最小间距
-## The safe-zone well couples to tangential motion: a fast pass is bent into a
-## slingshot and can leave faster than it arrived, while a slow/centred
-## approach is captured.  This is an emergent trajectory, not a random type.
-const ZONE_ORBIT_ACCEL := 230.0
-const ZONE_ORBIT_SPEED_MAX := 600.0
-const ZONE_ORBIT_MIN_TANGENT := 45.0
+## The zone is a capture well: the inward pull is always on while the player
+## is in the approach band, and outward radial motion is braked so a fast
+## tangential pass is bent back into the ring instead of being slung out.
 const SAFE_FUEL_DIST := 1875.0      # placement band: ~12.5 s of full-thrust delta-v (50 fuel)
 const SHOP_DIST_MIN := 2800.0
 const SHOP_DIST_MAX := 4200.0

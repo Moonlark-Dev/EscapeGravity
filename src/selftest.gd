@@ -342,6 +342,10 @@ func _test_missiles() -> void:
 func _test_meteor_matter() -> void:
 	var r := _new_run(104)
 	_clear_arena(r)
+	for b in r.galaxy.bodies.duplicate():
+		b.remove()
+	r.galaxy.bodies.clear()
+	r.no_stream = true
 	r.ship.position = Vector2.ZERO
 	r.ship.vel = Vector2.ZERO
 	r.ship.shield = 20.0
@@ -376,7 +380,7 @@ func _test_meteor_matter() -> void:
 	r.simulate(dt)
 	_check("大物质 3 XP / 自动吸取", absf(r.xp - 3.0) < 0.01, "xp=%.0f" % r.xp)
 
-	# magnet radius 190
+	# magnet radius 240
 	var far := Matter.new()
 	far.run = r
 	far.position = r.ship.position + Vector2(300, 0)
@@ -385,7 +389,7 @@ func _test_meteor_matter() -> void:
 	var d0 := far.position.distance_to(r.ship.position)
 	_step(r, 0.6)
 	var d1 := far.position.distance_to(r.ship.position)
-	_check("190 吸取半径：300 外不吸引", absf(d0 - d1) < 20.0, "d0=%.0f d1=%.0f" % [d0, d1])
+	_check("240 吸取半径：300 外不吸引", absf(d0 - d1) < 20.0, "d0=%.0f d1=%.0f" % [d0, d1])
 	var near := Matter.new()
 	near.run = r
 	near.position = r.ship.position + Vector2(150, 0)
@@ -394,32 +398,18 @@ func _test_meteor_matter() -> void:
 	var n0 := near.position.distance_to(r.ship.position)
 	_step(r, 0.4)
 	var n1 := near.position.distance_to(r.ship.position)
-	_check("190 吸取半径：150 内被吸引", n1 < n0 - 5.0, "n0=%.0f n1=%.0f" % [n0, n1])
+	_check("240 吸取半径：150 内被吸引", n1 < n0 - 5.0, "n0=%.0f n1=%.0f" % [n0, n1])
 
-	# A fast tangential pass cannot be captured by the finite tractor beam:
-	# the mote is whipped out toward the wake instead of being absorbed.
-	var fm := Matter.new()
-	fm.run = r
-	fm.position = r.ship.position + Vector2(150, 0)
-	r.world.add_child(fm)
-	r.matters.append(fm)
-	var fm_start := fm.position
-	r.ship.vel = Vector2(0, 300)
-	_step(r, 0.2)
-	_check("高速侧掠物质会被甩飞而不是吸收",
-		not fm.collected and fm.fling_t > 0.0 and fm.position.distance_to(fm_start) > 20.0,
-		"flung=%.2f moved=%.0f collected=%s" % [fm.fling_t, fm.position.distance_to(fm_start), str(fm.collected)])
-	_check("物质甩飞进入冷却", r.stats.get("flung", 0) >= 1 and fm._fling_cd > 0.0,
-		"flung=%d cd=%.2f" % [int(r.stats.get("flung", 0)), fm._fling_cd])
-	# Head-on approach still uses the normal tractor and is absorbed.
+	# A fast ship must not leave matter behind: the tractor is faster than the
+	# ship and keeps pulling even when the player is already moving away.
 	var hm := Matter.new()
 	hm.run = r
-	hm.position = r.ship.position + Vector2(150, 0)
+	hm.position = r.ship.position + Vector2(-180, 0)
 	r.world.add_child(hm)
 	r.matters.append(hm)
-	r.ship.vel = Vector2(300, 0)
-	_step(r, 0.6)
-	_check("正面高速接近仍会吸收物质", hm.collected, "collected=%s" % str(hm.collected))
+	r.ship.vel = Vector2(600, 0)
+	_step(r, 4.0)
+	_check("高速远离时物质仍会被追上吸收", hm.collected, "collected=%s" % str(hm.collected))
 	r.ship.vel = Vector2.ZERO
 	_check("每 20 XP 升级", EG.XP_PER_LEVEL == 20.0)
 	_kill(r)
@@ -482,17 +472,17 @@ func _test_zones() -> void:
 	rf.galaxy.bodies.clear()
 	rf.no_stream = true
 	rf.ship.position = Vector2(-250, 0)
-	rf.ship.vel = Vector2(0, 300)
+	rf.ship.vel = Vector2(0, 600)
 	rf.ship.fuel = rf.ship.fuel_max
 	rf.auto_input = Vector2.ZERO
 	rf.auto_boost = false
 	var zf := rf.make_zone("safe", Vector2.ZERO)
 	rf.safe_zone = zf
-	var v0 := rf.ship.vel.length()
-	_step(rf, 2.5)
-	_check("高速切线掠过安全区会被引力甩出",
-		not zf.entered and not rf.player_hidden and rf.ship.vel.length() > v0 + 60.0
-		and rf.ship.position.distance_to(zf.position) > EG.ZONE_RADIUS,
+	_step(rf, 4.0)
+	_check("高速切线掠过安全区仍会被吸入",
+		zf.entered and rf.player_hidden and rf.safe_zone == zf
+		and rf.ship.position.distance_to(zf.position) < EG.ZONE_RADIUS
+		and rf.ship.vel.length() < 60.0,
 		"v=%.0f d=%.0f entered=%s" % [rf.ship.vel.length(), rf.ship.position.distance_to(zf.position), str(zf.entered)])
 	_kill(rf)
 	_kill(r)

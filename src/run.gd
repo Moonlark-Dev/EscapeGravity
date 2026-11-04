@@ -64,7 +64,7 @@ var assist_active := false
 var orbit_assist := false
 var tutorial_index := 0
 var tutorial_timer := 0.0
-var stats := {"matter": 0, "hits": 0, "damage": 0, "unlocks": 0, "fuel_items": 0, "flung": 0}
+var stats := {"matter": 0, "hits": 0, "damage": 0, "unlocks": 0, "fuel_items": 0}
 var last_damage_source := ""
 var _screen_size := EG.SCREEN
 var _last_tick := 0.0
@@ -952,10 +952,6 @@ func on_matter_collected(m: Matter) -> void:
 	if pending_levels > 0 and state == State.PLAYING:
 		begin_levelup()
 
-func on_matter_flung(m: Matter) -> void:
-	stats["flung"] = int(stats.get("flung", 0)) + 1
-	Fx.sparks(fx_layer, m.position, Color(0.5, 0.9, 1.0, 0.8), 5, 120.0)
-
 func _matter_pickup_count() -> int:
 	return int(stats["matter"])
 
@@ -1430,24 +1426,25 @@ func assist_accel(s: PlayerShip, delta: float = 0.0) -> Vector2:
 	if safe_zone != null and safe_zone.active \
 			and safe_zone.position.distance_to(s.position) < safe_zone.clearance_radius() + 420.0:
 		var zone_d: float = s.position.distance_to(safe_zone.position)
-		if input.length() < 0.1 and zone_d > 40.0:
-			acc += (safe_zone.position - s.position).normalized() * EG.ZONE_GRAVITY
-			assist_active = true
-		# The safe-zone well also couples to tangential motion: a fast pass is
-		# bent into a slingshot and can leave faster than it arrived, while a
-		# slow or centred approach is captured by the inward pull above.
-		if not safe_zone.entered and zone_d > safe_zone.radius:
+		if zone_d > 1.0:
 			var zone_radial: Vector2 = (s.position - safe_zone.position).normalized()
-			var zone_vt: Vector2 = s.vel - zone_radial * s.vel.dot(zone_radial)
-			var speed_now: float = s.vel.length()
-			if zone_vt.length() > EG.ZONE_ORBIT_MIN_TANGENT and speed_now < EG.ZONE_ORBIT_SPEED_MAX:
-				var zone_tangent: Vector2 = zone_radial.orthogonal()
-				if zone_vt.dot(zone_tangent) < 0.0:
-					zone_tangent = -zone_tangent
-				var zone_fade: float = clampf(1.0 - speed_now / EG.ZONE_ORBIT_SPEED_MAX, 0.0, 1.0)
-				acc += zone_tangent * EG.ZONE_ORBIT_ACCEL * zone_fade
+			var to_center: Vector2 = -zone_radial
+			var leaving := false
+			if input.length() > 0.1:
+				leaving = input.normalized().dot(to_center) < -0.35
+			if not leaving:
+				# 持续向心牵引，而不是只有“无输入”时才生效；玩家高速滑过
+				# 或正在转向时，安全区仍然会把他往圈里拉。
+				acc += to_center * EG.ZONE_GRAVITY
+				# 只制动“向外”的径向速度，避免把向心速度也抵消掉；再对
+				# 切向速度做阻尼，高速掠过会先被拖慢再被拉进圈内。
+				var outward: float = s.vel.dot(zone_radial)
+				if outward > 12.0:
+					acc -= zone_radial * minf(EG.SHIP_SAFE_BRAKE, outward * 6.0)
+				var tangential: Vector2 = s.vel - zone_radial * s.vel.dot(zone_radial)
+				if tangential.length() > 6.0:
+					acc -= tangential.normalized() * minf(EG.SHIP_SAFE_BRAKE * 0.5, tangential.length() * 2.0)
 				assist_active = true
-				orbit_assist = true
 	for b in galaxy.bodies:
 		var surface: float = s.position.distance_to(b.position) - b.radius
 		if surface > 320.0 or surface < 0.0:
@@ -1533,7 +1530,7 @@ func _tutorial_step(delta: float) -> void:
 		[34.0, "贴近行星时辅助装置会自动绕行加速，离开引力圈后速度保留", EG.C_CYAN],
 		[42.0, "炮塔外壳会伤害你，但它也是导弹唯一能撞的东西", EG.C_VIOLET],
 		[50.0, "辅助操作装置会平衡恒星引力；导弹没有这套装置，始终被引力弯折", EG.C_CYAN],
-		[58.0, "安全区引力会与切线速度耦合：高速掠过会被甩出；物质也会被高速侧掠甩开", EG.C_MAGENTA],
+		[58.0, "安全区会持续牵引并制动；物质靠近即吸收，高速经过也不会被甩开", EG.C_MAGENTA],
 	]
 	if Store.touch_mode:
 		texts = [
@@ -1544,7 +1541,7 @@ func _tutorial_step(delta: float) -> void:
 			[34.0, "贴近行星时辅助装置会自动绕行加速，离开引力圈后速度保留", EG.C_CYAN],
 			[42.0, "炮塔外壳会伤害你，但它也是导弹唯一能撞的东西", EG.C_VIOLET],
 			[50.0, "辅助操作装置会平衡恒星引力；导弹没有这套装置，始终被引力弯折", EG.C_CYAN],
-			[58.0, "安全区引力会与切线速度耦合：高速掠过会被甩出；物质也会被高速侧掠甩开", EG.C_MAGENTA],
+			[58.0, "安全区会持续牵引并制动；物质靠近即吸收，高速经过也不会被甩开", EG.C_MAGENTA],
 		]
 	if tutorial_index < texts.size() and tutorial_timer >= float(texts[tutorial_index][0]):
 		if hud != null:
