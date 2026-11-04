@@ -95,16 +95,16 @@ escape-gravity-release/
 - **敌人刷新与发现**：按 `RunRoute` 预生成顺序取点（首段 1900~2400，之后 2100~2700）；两个敌人位置之间必有一个安全区，商店比安全区离路线更远。路线只用于布局、不渲染；不要改回随机方向刷新。敌人未进入玩家屏幕前不可见、不进雷达/方位/血条；玩家进入 `ENEMY_AGGRO_RANGE=2100` 后以 `1.5×` 速度逼近，贴图进入屏幕的同一帧才算 `discovered`。
 - **未发现也会开火**：`enemy._fire_hidden` 在屏幕边缘外 180~320px 生成偷袭弹，切线初速让它绕弧切入；72% 的方向落在敌人方位 ±57° 内，其余全随机。偷袭弹 `sneak=true`，单独上限 `ENEMY_HIDDEN_MAX=2`，且**不占**正常 3 枚直射名额。别用 `locked_missile_count()` 把它们算进去，否则会挤掉正面齐射、破坏诱导循环。
 - **出生区是敌对区**：`_initial_spawn` 不再生成安全区，`safe_unlocked=false`；击毁首个攻击者后 `_unlock_safe_after_first_kill` 才解锁，并把 `route.next_safe` 直接推到 1，跳过出生点旁的安全区节点。别把初始安全区加回来，也别在未解锁时让 `_update_spawns` 刷新安全区。
-- **安全区与敌人保持间距**：安全区预置在相邻两段敌人的中点（`SAFE_T=0.50`，首段 `SAFE_FIRST_T=0.35`），横向偏移 470~600，圆心离两侧敌人预置点 ≥1150；刷新时 `_clear_zone_of_enemies` 会按 `ZONE_ENEMY_CLEAR=520` 推开正在交战的敌人，敌人刷新校验同一间距。别再把安全区挪回贴着上一场战斗的位置。安全区出生时只有 `ZONE_ENTRY_RADIUS=78`，但所有间距/引力/燃料判定都用 `clearance_radius()`（恒为完整 280）；玩家到中心才扩张，扩张同一帧把 `radius` 设为 280，动画只影响外观。只有**稳定**安全区内 `gravity_ship_at` 返回零（station-keeping），否则 3R 引力圈会把握停的飞船拖出去。
-- **安全区可能是引力异常**：`ZONE_UNSTABLE_CHANCE=0.24`，异常区直接以完整 R280 出现，贴图与雷达点为品红；外圈 `assist_accel` 用 `ZONE_UNSTABLE_PUSH=300` 推开飞船，进入圈内触发 `_spring_safe_trap`，以不低于 `ZONE_TRAP_IMPULSE=520` 的速度甩飞，并且**不**补燃料、不清导弹、不隐藏威胁。`_check_fuel` 只把稳定安全区当作燃料保护。别把异常区当普通安全区处理。
-- **物质可能被甩飞**：`MATTER_VOLATILE_CHANCE=0.16`（大物质 0.24）的标记为 `volatile`；玩家进入 190 吸取圈时 `Matter._fling_away` 以 520 速度、600 减速度甩开 0.9s，冷却 2.4s，甩飞期间不可拾取。视觉上用洋红发光区分；不要把它改回无条件吸收。
+- **安全区与敌人保持间距**：安全区预置在相邻两段敌人的中点（`SAFE_T=0.50`，首段 `SAFE_FIRST_T=0.35`），横向偏移 470~600，圆心离两侧敌人预置点 ≥1150；刷新时 `_clear_zone_of_enemies` 会按 `ZONE_ENEMY_CLEAR=520` 推开正在交战的敌人，敌人刷新校验同一间距。别再把安全区挪回贴着上一场战斗的位置。安全区出生时只有 `ZONE_ENTRY_RADIUS=78`，但所有间距/引力/燃料判定都用 `clearance_radius()`（恒为完整 280）；玩家到中心才扩张，扩张同一帧把 `radius` 设为 280，动画只影响外观。只有安全区内 `gravity_ship_at` 返回零（station-keeping），否则 3R 引力圈会把握停的飞船拖出去。
+- **安全区引力会甩飞飞船**：安全区外圈（`clearance_radius()+420` 内、尚未进入）在飞船有切线速度时，`assist_accel` 会沿切线施加 `ZONE_ORBIT_ACCEL=230 × (1-speed/600)`，切线速度需 >`ZONE_ORBIT_MIN_TANGENT=45`；高速切线掠过可以越甩越快并离开引力圈。减速或对准中心时，原来的向心牵引与 R78 触发圈会正常捕获；进圈后仍由 `SHIP_SAFE_BRAKE=1400` 停靠。不要新增随机“异常安全区”类型，也不要让外圈永远只吸不甩。
+- **物质牵引会甩飞物质**：牵引场是有限力。飞船速度 >`MATTER_FLING_SHIP_SPEED=240` 且航向与“飞船→物质”方向点积 <`MATTER_FLING_HEADING_DOT=0.55`（高速侧掠）时，`Matter._can_fling` 成立，物质以 `MATTER_FLING_IMPULSE=360` 以上甩向尾迹 0.65s，冷却 1.2s；正面接近或低速仍走原来的吸附。所有物质共用同一判断。
 - **商店绑定敌人深度**：创建商店时记录 `shop_bound_depth=depth`。如果玩家没有使用商店、并且击毁了所属敌人和下一个敌人（`depth > shop_bound_depth + 1`），`_maybe_refresh_shop` 会移除旧信标并在下一个路线商店点重新生成；使用商店离开后仍按 `SHOP_RESPAWN=26` 计时。别让被跳过的商店永远留在身后。
 - **空白路径可能藏加速天体**：`RunRoute._make_route_body` 有 42% 概率尝试把该段的天体锚点放进两个敌人之间的空白路径（`PATH_BODY_T=0.56~0.78`、横向 ≤160、半径 140~180），只有避开安全区/商店/两侧敌人/已生成路线天体时才接受，否则回退到原侧方锚点（`BODY_T=0.50`、偏移 380~480）。每段仍保证有一个天体锚点。
 - **无限地图**：`Backdrop._process` 必须用相机中心 `c` 锚定图层；删掉 `c` 项会导致离开初始区块后背景消失。`Galaxy.LOAD_RADIUS=3`、`MAX_BODIES=90`，空区块保底一颗天体；`Galaxy._generate_chunk` 会为落在该区块的路线段补一颗行星；物质每 2 秒按飞船周边 3400px 数量补充，5200px 外回收。
 - **触屏右侧控制列**：底部加力 150px → 其上技能 92×2 → 再上物品栏 → 物品提示；代币读数在雷达下方。方位标记重叠时沿屏幕边缘错开。
 - **真惯性**：太空无阻力（`SHIP_DRAG=0`），松开推进保持速度；`SHIP_MAX_SPEED=150` 只是引擎可加速到的上限，超过后推进只用于转向/减速，不能把惯性压回；外部速度安全上限 `SHIP_SPEED_HARD=720`。别把全局硬上限加回 150。
 - **燃料按实际 Δv**：`ship.step` 只按本帧真正改变的速度量扣油；到极速后按住推进不耗油，滑行免费。加力槽同理，只有实际加速才消耗。
-- **环绕加速**：`BODY_GRAVITY_RANGE=3`（原 2）；`assist_accel` 在贴体 320px 内沿切线加速，速度 600 处淡出；离开引力圈后速度保留。稳定安全区停靠反推上限 `SHIP_SAFE_BRAKE=1400`，以 600~720 进站要能在 R280 内停住；只有明确朝圈外推进时才放手。
+- **环绕加速**：`BODY_GRAVITY_RANGE=3`（原 2）；`assist_accel` 在贴体 320px 内沿切线加速，速度 600 处淡出；离开引力圈后速度保留。安全区停靠反推上限 `SHIP_SAFE_BRAKE=1400`，以 600~720 进站要能在 R280 内停住；只有明确朝圈外推进时才放手。
 - **天体与内容双向避让**：新天体落点用 `Galaxy.body_fits()` 检查已加载天体、当前飞船、安全区/商店/敌人和**全部路线预置节点**；安全区/商店/敌人刷新用 `_clear_body_point()` 的 18 圈 × 24 方向环形搜索，安全区按完整 R280、敌人按外壳、天体按表面 + `BODY_CONTENT_MARGIN=160` 留白。别再把 `_clear_body_point` 的 clearance 传成 90/120。
 - **平衡**：初始燃料 **500**；推进 4/s、加力 **4.8/s（1.2×）**（均按实际 Δv），3× 推力，引擎极速 150 / 加力 192，初始槽 **6.6s**；护盾 20。
 - **状态机**：`PLAYING / LEVELUP / SHOP / DESTROY / DEAD`；暂停由 `main.gd` 控制，`run.paused` 冻结模拟。
@@ -150,7 +150,7 @@ python3 tools/make_dist.py
 
 改动运行逻辑后，至少完成：
 
-1. `RESULT: 141 checks, 0 failed`；导出包内再跑一次 `./build/linux/EscapeGravity.x86_64 --headless -- --selftest`。
+1. `RESULT: 138 checks, 0 failed`；导出包内再跑一次 `./build/linux/EscapeGravity.x86_64 --headless -- --selftest`。
 2. 用导出包重新生成截图；桌面 11 张 + 移动端 20:9 一张，检查标题居中、触屏按钮不重叠。
 3. 无运行时绘制审计（应只有 `RenderingServer.frame_post_draw` 一条命中）：
    ```bash
