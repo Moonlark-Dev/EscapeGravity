@@ -396,21 +396,31 @@ func _test_meteor_matter() -> void:
 	var n1 := near.position.distance_to(r.ship.position)
 	_check("190 吸取半径：150 内被吸引", n1 < n0 - 5.0, "n0=%.0f n1=%.0f" % [n0, n1])
 
-	# Volatile matter: approaching it kicks it away instead of absorbing it.
-	var vm := Matter.new()
-	vm.run = r
-	vm.position = r.ship.position + Vector2(150, 0)
-	vm.volatile = true
-	r.world.add_child(vm)
-	r.matters.append(vm)
-	var vd0 := vm.position.distance_to(r.ship.position)
-	_step(r, 0.5)
-	var vd1 := vm.position.distance_to(r.ship.position)
-	_check("不安定物质被甩飞而不是吸收",
-		vd1 > vd0 + 60.0 and not vm.collected,
-		"d0=%.0f d1=%.0f collected=%s" % [vd0, vd1, str(vm.collected)])
-	_check("不安定物质甩飞进入冷却", r.stats.get("flung", 0) >= 1 and vm._fling_cd > 0.0,
-		"flung=%d cd=%.2f" % [int(r.stats.get("flung", 0)), vm._fling_cd])
+	# A fast tangential pass cannot be captured by the finite tractor beam:
+	# the mote is whipped out toward the wake instead of being absorbed.
+	var fm := Matter.new()
+	fm.run = r
+	fm.position = r.ship.position + Vector2(150, 0)
+	r.world.add_child(fm)
+	r.matters.append(fm)
+	var fm_start := fm.position
+	r.ship.vel = Vector2(0, 300)
+	_step(r, 0.2)
+	_check("高速侧掠物质会被甩飞而不是吸收",
+		not fm.collected and fm.fling_t > 0.0 and fm.position.distance_to(fm_start) > 20.0,
+		"flung=%.2f moved=%.0f collected=%s" % [fm.fling_t, fm.position.distance_to(fm_start), str(fm.collected)])
+	_check("物质甩飞进入冷却", r.stats.get("flung", 0) >= 1 and fm._fling_cd > 0.0,
+		"flung=%d cd=%.2f" % [int(r.stats.get("flung", 0)), fm._fling_cd])
+	# Head-on approach still uses the normal tractor and is absorbed.
+	var hm := Matter.new()
+	hm.run = r
+	hm.position = r.ship.position + Vector2(150, 0)
+	r.world.add_child(hm)
+	r.matters.append(hm)
+	r.ship.vel = Vector2(300, 0)
+	_step(r, 0.6)
+	_check("正面高速接近仍会吸收物质", hm.collected, "collected=%s" % str(hm.collected))
+	r.ship.vel = Vector2.ZERO
 	_check("每 20 XP 升级", EG.XP_PER_LEVEL == 20.0)
 	_kill(r)
 
@@ -419,7 +429,7 @@ func _test_zones() -> void:
 	_clear_arena(r)
 	r.ship.position = Vector2.ZERO
 	r.ship.fuel = 40.0
-	var z := r.make_zone("safe", Vector2(900, 0), 0)
+	var z := r.make_zone("safe", Vector2(900, 0))
 	r.safe_zone = z
 	_check("安全区进入前只比飞船大一点", absf(z.radius - EG.ZONE_ENTRY_RADIUS) < 0.01
 		and EG.ZONE_ENTRY_RADIUS > EG.SHIP_RADIUS and EG.ZONE_ENTRY_RADIUS < EG.ZONE_RADIUS,
@@ -441,7 +451,7 @@ func _test_zones() -> void:
 	# High-speed entry: the assist must brake hard enough to stop inside R280.
 	var rz := _new_run(120)
 	_clear_arena(rz)
-	var z2 := rz.make_zone("safe", Vector2.ZERO, 0)
+	var z2 := rz.make_zone("safe", Vector2.ZERO)
 	rz.safe_zone = z2
 	rz.ship.position = Vector2(-200, 0)
 	rz.ship.vel = Vector2(600, 0)
@@ -463,34 +473,28 @@ func _test_zones() -> void:
 	r.close_shop()
 	_check("关闭商店回到游戏", r.state == Run.State.PLAYING)
 
-	# Gravity anomaly: an unstable safe zone pushes an idle ship away, is not a
-	# fuel refuge, and ejects anyone who reaches its centre.
-	var ru := _new_run(125)
-	_clear_arena(ru)
-	ru.ship.position = Vector2(300, 0)
-	ru.ship.vel = Vector2.ZERO
-	ru.auto_input = Vector2.ZERO
-	var uz := ru.make_zone("safe", Vector2(900, 0), 1)
-	ru.safe_zone = uz
-	ru.camera.position = Vector2.ZERO
-	_check("引力异常安全区有独立的视觉与状态", uz.unstable and uz._pulse != null and uz._pulse.modulate.r > 0.9)
-	var push := ru.assist_accel(ru.ship)
-	_check("引力异常安全区外圈把飞船推离而不是吸入", push.x < -60.0,
-		"acc=(%.0f, %.0f)" % [push.x, push.y])
-	ru.ship.fuel = 0.0
-	ru.fuel_dead_timer = 0.0
-	ru._check_fuel(0.5)
-	_check("引力异常安全区不算燃料保护", absf(ru.fuel_dead_timer - 0.5) < 0.01,
-		"timer=%.2f" % ru.fuel_dead_timer)
-	ru.fuel_dead_timer = 0.0
-	ru.ship.position = uz.position
-	ru._zone_checks()
-	_check("进入引力异常圈会被甩飞",
-		ru.safe_zone == null and ru.ship.vel.length() >= EG.ZONE_TRAP_IMPULSE - 1.0
-		and not ru.player_hidden and absf(ru.safe_respawn_timer - 10.0) < 0.01,
-		"v=%.0f hidden=%s timer=%.1f" % [ru.ship.vel.length(), str(ru.player_hidden), ru.safe_respawn_timer])
-	_check("引力异常甩飞后重新排队安全区", int(ru.stats.get("traps", 0)) == 1 and absf(ru.safe_respawn_timer - 10.0) < 0.01)
-	_kill(ru)
+	# A fast tangential pass is bent into a slingshot: the safe-zone well adds
+	# tangential speed and the ship leaves instead of being captured.
+	var rf := _new_run(125)
+	_clear_arena(rf)
+	for b in rf.galaxy.bodies.duplicate():
+		b.remove()
+	rf.galaxy.bodies.clear()
+	rf.no_stream = true
+	rf.ship.position = Vector2(-250, 0)
+	rf.ship.vel = Vector2(0, 300)
+	rf.ship.fuel = rf.ship.fuel_max
+	rf.auto_input = Vector2.ZERO
+	rf.auto_boost = false
+	var zf := rf.make_zone("safe", Vector2.ZERO)
+	rf.safe_zone = zf
+	var v0 := rf.ship.vel.length()
+	_step(rf, 2.5)
+	_check("高速切线掠过安全区会被引力甩出",
+		not zf.entered and not rf.player_hidden and rf.ship.vel.length() > v0 + 60.0
+		and rf.ship.position.distance_to(zf.position) > EG.ZONE_RADIUS,
+		"v=%.0f d=%.0f entered=%s" % [rf.ship.vel.length(), rf.ship.position.distance_to(zf.position), str(zf.entered)])
+	_kill(rf)
 	_kill(r)
 
 func _test_inventory_and_upgrades() -> void:
@@ -907,7 +911,7 @@ func _test_body_clearance() -> void:
 	var r4 := _new_run(124)
 	_clear_arena(r4)
 	var zpos := Vector2(4000, 0)
-	r4.safe_zone = r4.make_zone("safe", zpos, 0)
+	r4.safe_zone = r4.make_zone("safe", zpos)
 	_check("新天体不会生成在安全区上", not r4.galaxy.body_fits(zpos, 300.0, 400.0, true))
 	_check("天体最终落地校验拒绝内容区", r4.galaxy._add_body(zpos, 300.0, "planet", 1, false) == null)
 	_check("安全区之外仍能落天体", r4.galaxy.body_fits(Vector2(100000, 100000), 300.0, 400.0, true))

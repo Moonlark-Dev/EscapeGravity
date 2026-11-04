@@ -35,7 +35,6 @@ var shop_inside := false
 var shop_stock: Array = []
 var shop_bound_depth := 0
 var safe_unlocked := false
-var volatile_hint_shown := false
 
 var depth := 1
 var kills := 0
@@ -65,7 +64,7 @@ var assist_active := false
 var orbit_assist := false
 var tutorial_index := 0
 var tutorial_timer := 0.0
-var stats := {"matter": 0, "hits": 0, "damage": 0, "unlocks": 0, "fuel_items": 0, "flung": 0, "traps": 0}
+var stats := {"matter": 0, "hits": 0, "damage": 0, "unlocks": 0, "fuel_items": 0, "flung": 0}
 var last_damage_source := ""
 var _screen_size := EG.SCREEN
 var _last_tick := 0.0
@@ -151,15 +150,10 @@ func new_gravity_body(pos: Vector2, r: float, kind: String, variant: int) -> Gra
 		galaxy.bodies.append(b)
 	return b
 
-func make_zone(kind: String, pos: Vector2, unstable_override: int = -1) -> Zone:
+func make_zone(kind: String, pos: Vector2) -> Zone:
 	var z := Zone.new()
 	z.run = self
 	z.kind = kind
-	if kind == "safe":
-		if unstable_override >= 0:
-			z.unstable = unstable_override == 1
-		else:
-			z.unstable = rng.randf() < EG.ZONE_UNSTABLE_CHANCE
 	z.position = pos
 	world.add_child(z)
 	zones.append(z)
@@ -170,7 +164,6 @@ func _add_matter(pos: Vector2, big: bool) -> void:
 	m.run = self
 	m.big = big
 	m.xp = EG.MATTER_BIG_XP if big else EG.MATTER_SMALL_XP
-	m.volatile = rng.randf() < (EG.MATTER_VOLATILE_CHANCE_BIG if big else EG.MATTER_VOLATILE_CHANCE)
 	m.position = pos
 	world.add_child(m)
 	matters.append(m)
@@ -356,7 +349,7 @@ func gravity_ship_at(pos: Vector2) -> Vector2:
 	# A safe zone is a station-keeping pocket: its assist cancels the local
 	# body gravity so a docked ship cannot be dragged out of the ring, even if
 	# the zone sits near a 3R well. Missiles never get this protection.
-	if safe_zone != null and safe_zone.active and not safe_zone.unstable and safe_zone.inside(pos):
+	if safe_zone != null and safe_zone.active and safe_zone.inside(pos):
 		return Vector2.ZERO
 	return galaxy.gravity_at(pos, true)
 
@@ -560,15 +553,9 @@ func _spawn_safe_respawn() -> void:
 	safe_zone = make_zone("safe", p)
 	player_hidden = false
 	if hud != null:
-		if safe_zone.unstable:
-			hud.toast("安全区信号异常 · 引力读数不稳定", EG.C_MAGENTA, 2.6)
-		else:
-			hud.toast("安全区信号已同步", EG.C_MINT, 2.2)
+		hud.toast("安全区信号已同步", EG.C_MINT, 2.2)
 		hud.emphasize_radar()
-	if safe_zone.unstable:
-		Audio.play("sfx_gravity", -6.0, 0.85)
-	else:
-		Audio.play("sfx_safezone", -6.0)
+	Audio.play("sfx_safezone", -6.0)
 
 ## The route point can land where the current fight is happening, or on a
 ## celestial body.  Push it away from live attackers/other zones, then out of
@@ -967,12 +954,7 @@ func on_matter_collected(m: Matter) -> void:
 
 func on_matter_flung(m: Matter) -> void:
 	stats["flung"] = int(stats.get("flung", 0)) + 1
-	Fx.sparks(fx_layer, m.position, Color(1.0, 0.35, 0.8, 0.9), 8, 150.0)
-	Audio.play("sfx_gravity", -15.0, 1.25)
-	if not volatile_hint_shown:
-		volatile_hint_shown = true
-		if hud != null:
-			hud.toast("不安定物质：靠近会被引力甩飞", EG.C_MAGENTA, 2.6)
+	Fx.sparks(fx_layer, m.position, Color(0.5, 0.9, 1.0, 0.8), 5, 120.0)
 
 func _matter_pickup_count() -> int:
 	return int(stats["matter"])
@@ -1297,12 +1279,7 @@ func _apply_upgrade(card: Dictionary) -> void:
 
 func _zone_checks() -> void:
 	if safe_zone != null and safe_zone.active:
-		if safe_zone.unstable:
-			# The anomaly never becomes a refuge: crossing the ring springs
-			# the trap and throws the ship back out.
-			if safe_zone.inside(ship.position):
-				_spring_safe_trap()
-		elif not safe_zone.entered and safe_zone.inside(ship.position):
+		if not safe_zone.entered and safe_zone.inside(ship.position):
 			_enter_safe()
 		elif safe_zone.entered and not safe_zone.inside(ship.position):
 			_leave_safe()
@@ -1311,36 +1288,6 @@ func _zone_checks() -> void:
 			_open_shop()
 		if shop_inside and not shop_zone.inside(ship.position):
 			_leave_shop()
-
-## Fling the player out of an unstable safe zone.  The kick is stronger than the
-## speed the ship entered with, so it reads as a deliberate rejection rather
-## than a soft bounce.  The anomaly collapses immediately; a new safe zone is
-## scheduled like a normal departure.
-func _spring_safe_trap() -> void:
-	var z := safe_zone
-	if z == null:
-		return
-	var away: Vector2 = ship.position - z.position
-	if away.length() < 1.0:
-		away = Vector2.RIGHT.rotated(rng.randf() * TAU)
-	away = away.normalized()
-	var tangent: Vector2 = away.orthogonal() * (1.0 if rng.randf() < 0.5 else -1.0)
-	var speed := minf(EG.SHIP_SPEED_HARD, maxf(EG.ZONE_TRAP_IMPULSE, ship.vel.length() + 180.0))
-	ship.vel = (away + tangent * EG.ZONE_TRAP_TANGENT).normalized() * speed
-	ship.invuln = maxf(ship.invuln, 0.6)
-	safe_zone = null
-	z.remove()
-	player_hidden = false
-	safe_respawn_timer = EG.ZONE_RESPAWN
-	stats["traps"] = int(stats.get("traps", 0)) + 1
-	shake = maxf(shake, 0.9)
-	Fx.warp(fx_layer, ship.position, Color(1.0, 0.35, 0.6, 0.9))
-	Fx.sparks(fx_layer, ship.position, Color(1.0, 0.4, 0.65, 0.9), 14, 260.0)
-	Audio.play("sfx_gravity", -2.0, 0.9)
-	if hud != null:
-		hud.toast("安全区引力异常 · 你被甩飞了", EG.C_MAGENTA, 2.8)
-		hud.set_info_hidden(false)
-		hud.set_safe_mode(false)
 
 func _enter_safe() -> void:
 	safe_zone.entered = true
@@ -1451,7 +1398,7 @@ func _check_fuel(delta: float) -> void:
 	if ship.fuel > 0.5:
 		fuel_dead_timer = 0.0
 		return
-	var safe_on_screen := safe_zone != null and not safe_zone.unstable and is_on_screen(safe_zone.position, safe_zone.clearance_radius())
+	var safe_on_screen := safe_zone != null and is_on_screen(safe_zone.position, safe_zone.clearance_radius())
 	var has_fuel_item := has_item("fuel")
 	if safe_on_screen or has_fuel_item:
 		fuel_dead_timer = 0.0
@@ -1465,7 +1412,7 @@ func _check_fuel(delta: float) -> void:
 func assist_accel(s: PlayerShip, delta: float = 0.0) -> Vector2:
 	var acc := Vector2.ZERO
 	var input := _read_dir()
-	if player_hidden or (safe_zone != null and safe_zone.active and not safe_zone.unstable and safe_zone.inside(s.position)):
+	if player_hidden or (safe_zone != null and safe_zone.active and safe_zone.inside(s.position)):
 		# 高速进站：安全区扩张到 R280 后，辅助装置用足够强的反推把飞船
 		# 停在圈内，而不是让它在 0.4 秒里穿过去。默认一直刹车；只有玩家
 		# 明确把推进方向指向圈外时才放手，避免把玩家困在安全区里。
@@ -1480,28 +1427,27 @@ func assist_accel(s: PlayerShip, delta: float = 0.0) -> Vector2:
 				acc += -s.vel.normalized() * minf(EG.SHIP_SAFE_BRAKE, s.vel.length() * 6.0)
 				assist_active = true
 		return acc
-	if safe_zone != null and safe_zone.active and safe_zone.unstable:
-		# 引力异常的安全区：外圈不是牵引而是推离。推力随距离衰减，但玩家
-		# 不主动推进时足够把他甩出圈外；越靠近中心推得越狠。
-		var band: float = safe_zone.clearance_radius() + 420.0
-		var zd: float = s.position.distance_to(safe_zone.position)
-		if zd < band:
-			var away: Vector2 = s.position - safe_zone.position
-			if away.length() < 1.0:
-				away = Vector2.RIGHT.rotated(rng.randf() * TAU)
-			away = away.normalized()
-			var tangent: Vector2 = away.orthogonal()
-			if tangent.dot(s.vel) < 0.0:
-				tangent = -tangent
-			var closeness: float = 1.0 - clampf(zd / band, 0.0, 1.0)
-			var push: float = EG.ZONE_UNSTABLE_PUSH * (0.6 + 0.4 * closeness)
-			acc += (away + tangent * EG.ZONE_UNSTABLE_TANGENT).normalized() * push
-			assist_active = true
-	if safe_zone != null and safe_zone.active and not safe_zone.unstable \
+	if safe_zone != null and safe_zone.active \
 			and safe_zone.position.distance_to(s.position) < safe_zone.clearance_radius() + 420.0:
-		if input.length() < 0.1 and s.position.distance_to(safe_zone.position) > 40.0:
+		var zone_d: float = s.position.distance_to(safe_zone.position)
+		if input.length() < 0.1 and zone_d > 40.0:
 			acc += (safe_zone.position - s.position).normalized() * EG.ZONE_GRAVITY
 			assist_active = true
+		# The safe-zone well also couples to tangential motion: a fast pass is
+		# bent into a slingshot and can leave faster than it arrived, while a
+		# slow or centred approach is captured by the inward pull above.
+		if not safe_zone.entered and zone_d > safe_zone.radius:
+			var zone_radial: Vector2 = (s.position - safe_zone.position).normalized()
+			var zone_vt: Vector2 = s.vel - zone_radial * s.vel.dot(zone_radial)
+			var speed_now: float = s.vel.length()
+			if zone_vt.length() > EG.ZONE_ORBIT_MIN_TANGENT and speed_now < EG.ZONE_ORBIT_SPEED_MAX:
+				var zone_tangent: Vector2 = zone_radial.orthogonal()
+				if zone_vt.dot(zone_tangent) < 0.0:
+					zone_tangent = -zone_tangent
+				var zone_fade: float = clampf(1.0 - speed_now / EG.ZONE_ORBIT_SPEED_MAX, 0.0, 1.0)
+				acc += zone_tangent * EG.ZONE_ORBIT_ACCEL * zone_fade
+				assist_active = true
+				orbit_assist = true
 	for b in galaxy.bodies:
 		var surface: float = s.position.distance_to(b.position) - b.radius
 		if surface > 320.0 or surface < 0.0:
@@ -1587,7 +1533,7 @@ func _tutorial_step(delta: float) -> void:
 		[34.0, "贴近行星时辅助装置会自动绕行加速，离开引力圈后速度保留", EG.C_CYAN],
 		[42.0, "炮塔外壳会伤害你，但它也是导弹唯一能撞的东西", EG.C_VIOLET],
 		[50.0, "辅助操作装置会平衡恒星引力；导弹没有这套装置，始终被引力弯折", EG.C_CYAN],
-		[58.0, "出生区没有安全区；击毁首个攻击者后才会解锁补给。安全区也可能引力异常", EG.C_MAGENTA],
+		[58.0, "安全区引力会与切线速度耦合：高速掠过会被甩出；物质也会被高速侧掠甩开", EG.C_MAGENTA],
 	]
 	if Store.touch_mode:
 		texts = [
@@ -1598,7 +1544,7 @@ func _tutorial_step(delta: float) -> void:
 			[34.0, "贴近行星时辅助装置会自动绕行加速，离开引力圈后速度保留", EG.C_CYAN],
 			[42.0, "炮塔外壳会伤害你，但它也是导弹唯一能撞的东西", EG.C_VIOLET],
 			[50.0, "辅助操作装置会平衡恒星引力；导弹没有这套装置，始终被引力弯折", EG.C_CYAN],
-			[58.0, "出生区没有安全区；击毁首个攻击者后才会解锁补给。安全区也可能引力异常", EG.C_MAGENTA],
+			[58.0, "安全区引力会与切线速度耦合：高速掠过会被甩出；物质也会被高速侧掠甩开", EG.C_MAGENTA],
 		]
 	if tutorial_index < texts.size() and tutorial_timer >= float(texts[tutorial_index][0]):
 		if hud != null:
