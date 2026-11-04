@@ -22,8 +22,9 @@ const C_DIM := Color("7f93b5")
 # ---- Ship ----
 const SHIP_RADIUS := 40.0            # matches the 82 px visible hull height (ship.png)
 const SHIP_ACCEL := 380.0
-const SHIP_MAX_SPEED := 150.0
-const SHIP_DRAG := 0.22
+const SHIP_MAX_SPEED := 150.0        # engine-only speed limit; gravity can exceed it
+const SHIP_DRAG := 0.0               # space has no drag: releasing thrust keeps momentum
+const SHIP_SPEED_HARD := 720.0       # safety/play ceiling for gravity-assisted speed
 const SHIP_BOOST_MULT := 3.0
 const SHIP_BOOST_SPEED_MULT := 1.28
 const SHIP_BOOST_MAX := 6.6          # initial gauge; 3x the old 2.2 s tank
@@ -31,8 +32,12 @@ const SHIP_BOOST_REFILL := 1.6          # per second, after the 0.7 s pause
 const SHIP_BOOST_RESUME := 0.22         # hysteresis: refill before re-engage
 const SHIP_BOOST_REFILL_DELAY := 0.7
 const SHIP_FUEL_MAX := 500.0
-const SHIP_FUEL_THRUST := 4.0
+const SHIP_FUEL_THRUST := 4.0        # per second of full thrust (actual delta-v)
 const SHIP_FUEL_BOOST := 4.8          # 1.2x thrust cost (was 2x)
+const SHIP_FUEL_ASSIST := 0.4         # orbit assist / docking brake, 10% of thrust
+const SHIP_ORBIT_ACCEL := 230.0       # tangential assist while diving at a body
+const SHIP_ORBIT_SPEED_MAX := 600.0   # assist fades to zero at this speed
+const SHIP_SAFE_BRAKE := 1400.0       # auto-dock deceleration inside a safe zone
 const SHIP_SHIELD_MAX := 20.0
 const SHIP_REGEN := 0.0
 
@@ -85,10 +90,16 @@ const BODY_RADIUS_MIN := 200.0
 const BODY_RADIUS_MAX := 380.0
 const BODY_MASS_REF := 290.0
 const BODY_MASS := 24000000.0
-const BODY_GRAVITY_RANGE := 2.0
+const BODY_GRAVITY_RANGE := 3.0
 const BODY_CORE_CLAMP := 0.85
 const STAR_RADIUS_MIN := 620.0
 const STAR_RADIUS_MAX := 900.0
+## Minimum visual gap between a body's surface and any spawned content.  A safe
+## zone keeps its full expanded sprite (R280) clear of the body, and an enemy
+## keeps its hull clear too, so nothing can be born inside or hugging a planet.
+const BODY_CONTENT_MARGIN := 160.0
+const PLACE_SEARCH_STEP := 320.0     # radial step when relocating blocked content
+const PLACE_SEARCH_RINGS := 18       # 18 x 24 candidate ring around a planned point
 
 # ---- Meteor ----
 const METEOR_INTERVAL := 10.0
@@ -113,7 +124,7 @@ const ZONE_EXPAND_TIME := 0.62       # 进入时的扩张动画时长
 const ZONE_GRAVITY := 46.0
 const ZONE_RESPAWN := 10.0
 const ZONE_ENEMY_CLEAR := 520.0     # 安全区贴图边缘与敌人外壳的最小间距
-const SAFE_FUEL_DIST := 1875.0      # 50 fuel worth of travel (4/s at 150 px/s)
+const SAFE_FUEL_DIST := 1875.0      # placement band: ~12.5 s of full-thrust delta-v (50 fuel)
 const SHOP_DIST_MIN := 2800.0
 const SHOP_DIST_MAX := 4200.0
 const SHOP_RESPAWN := 26.0

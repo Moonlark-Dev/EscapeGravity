@@ -139,6 +139,10 @@ func step(delta: float) -> void:
 			position += dir * spd * delta
 		elif dist_to_player < radius + 260.0:
 			position -= dir * spd * 0.55 * delta
+	# Never let a hull finish a frame inside a celestial body, even if a giant
+	# well streamed in next to it or the avoidance push was not enough.
+	if run != null and run.galaxy != null:
+		position = run.galaxy.push_out_of_bodies(position, radius)
 
 	if overheated:
 		overheat_timer -= delta

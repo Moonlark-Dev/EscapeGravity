@@ -28,6 +28,7 @@ var _hull: Sprite2D
 var _plume: Sprite2D
 var _shield_sprite: Sprite2D
 var _trail: CPUParticles2D
+var _streak: CPUParticles2D
 var _spark_timer := 0.0
 var _t := 0.0
 
@@ -65,15 +66,77 @@ func _ready() -> void:
 	_trail.position = Vector2(-14, 0)
 	add_child(_trail)
 
+	# Speed streaks: only visible when the ship is coasting fast after a gravity
+	# assist, so the player can read "I was flung out" without a gauge.
+	_streak = CPUParticles2D.new()
+	_streak.texture = Assets.world("spark")
+	_streak.amount = 24
+	_streak.lifetime = 0.32
+	_streak.local_coords = false
+	_streak.emission_shape = CPUParticles2D.EMISSION_SHAPE_POINT
+	_streak.direction = Vector2(-1, 0)
+	_streak.spread = 8.0
+	_streak.initial_velocity_min = 240.0
+	_streak.initial_velocity_max = 420.0
+	_streak.scale_amount_min = 0.22
+	_streak.scale_amount_max = 0.55
+	_streak.color = Color(0.55, 0.86, 1.0, 0.35)
+	_streak.emitting = false
+	_streak.material = Assets.additive_material()
+	add_child(_streak)
+
 func step(delta: float, dir: Vector2, want_boost: bool) -> void:
 	_t += delta
 	invuln = maxf(0.0, invuln - delta)
-	thrusting = dir.length() > 0.15 and fuel > 0.0
 	dash_time = maxf(0.0, dash_time - delta)
+	var has_input: bool = dir.length() > 0.15 and fuel > 0.0
+	var dir_n := dir.normalized() if has_input else Vector2.ZERO
+	var speed0 := vel.length()
 	var was_boosting := boosting
-	boosting = thrusting and want_boost and boost_ready and boost_meter > 0.02
+	var can_boost: bool = has_input and want_boost and boost_ready and boost_meter > 0.02
+	var cap: float = EG.SHIP_MAX_SPEED * (EG.SHIP_BOOST_SPEED_MULT if can_boost else 1.0)
+	var accel: float = EG.SHIP_ACCEL * (EG.SHIP_BOOST_MULT * boost_mult if can_boost else 1.0)
+	var full_dv: float = accel * delta
+
+	# Engine model: thrust can accelerate the hull up to `cap`. Above that
+	# speed it may still turn or brake, but it can never add more speed — so
+	# the only way past the engine limit is a gravity assist. The velocity is
+	# only ever scaled down when thrust *increased* the speed, which keeps
+	# coasting momentum and gravity gains intact.
+	var v1 := vel
+	var moved := 0.0
+	if has_input and dash_time <= 0.0:
+		v1 = vel + dir_n * full_dv
+		var limit: float = maxf(speed0, cap)
+		if v1.length() > limit:
+			v1 = v1.normalized() * limit
+		if v1.length() > EG.SHIP_SPEED_HARD:
+			v1 = v1.normalized() * EG.SHIP_SPEED_HARD
+		moved = v1.distance_to(vel)
+		vel = v1
+
+	thrusting = moved > 0.01
+	boosting = can_boost and moved > 0.01
 	if boosting and not was_boosting and run != null:
 		Audio.play("sfx_boost", -8.0)
+	if thrusting:
+		var spent := moved / maxf(accel, 0.001)    # seconds of full thrust
+		if boosting:
+			boost_meter = maxf(0.0, boost_meter - spent)
+			# 触底即耗尽（点火下限是 0.02，留残量会在阈值附近反复微点火）
+			if boost_meter <= 0.02:
+				boosting = false
+				boost_ready = false
+				boost_meter = 0.0
+			fuel = maxf(0.0, fuel - EG.SHIP_FUEL_BOOST * spent)
+		else:
+			fuel = maxf(0.0, fuel - EG.SHIP_FUEL_THRUST * spent)
+		facing = lerp_angle(facing, dir_n.angle(), 1.0 - pow(0.0004, delta))
+		thrust_level = lerpf(thrust_level, 1.0, 1.0 - pow(0.0006, delta))
+	else:
+		thrust_level = lerpf(thrust_level, 0.0, 1.0 - pow(0.0006, delta))
+		if vel.length() > 6.0:
+			facing = lerp_angle(facing, vel.angle(), 1.0 - pow(0.02, delta))
 
 	# 回充只看“是否真的在加力”：松开加力后即使仍在推进，加力槽也照常恢复。
 	# 槽耗尽后要求先松开加力键，避免按住不放时在 0.22 阈值上反复抖动着火。
@@ -83,32 +146,12 @@ func step(delta: float, dir: Vector2, want_boost: bool) -> void:
 		_boost_idle += delta
 	if not boost_ready and boost_meter >= EG.SHIP_BOOST_RESUME and not want_boost:
 		boost_ready = true
-
-	if thrusting:
-		if boosting:
-			boost_meter = maxf(0.0, boost_meter - delta)
-			# 触底即耗尽（点火下限是 0.02，留残量会在阈值附近反复微点火）
-			if boost_meter <= 0.02:
-				boosting = false
-				boost_ready = false
-				boost_meter = 0.0
-			fuel = maxf(0.0, fuel - EG.SHIP_FUEL_BOOST * delta)
-		else:
-			fuel = maxf(0.0, fuel - EG.SHIP_FUEL_THRUST * delta)
-		var accel: float = EG.SHIP_ACCEL * (EG.SHIP_BOOST_MULT * boost_mult if boosting else 1.0)
-		if dash_time <= 0.0:
-			vel += dir.normalized() * accel * delta
-		facing = lerp_angle(facing, dir.angle(), 1.0 - pow(0.0004, delta))
-		thrust_level = lerpf(thrust_level, 1.0, 1.0 - pow(0.0006, delta))
-	else:
-		thrust_level = lerpf(thrust_level, 0.0, 1.0 - pow(0.0006, delta))
-		if vel.length() > 6.0:
-			facing = lerp_angle(facing, vel.angle(), 1.0 - pow(0.02, delta))
-
 	if not boosting and _boost_idle > EG.SHIP_BOOST_REFILL_DELAY and boost_meter < boost_cap:
 		boost_meter = minf(boost_cap, boost_meter + EG.SHIP_BOOST_REFILL * delta)
 
-	# Operation assist (does not alter facing).
+	# Operation assist (does not alter facing).  It turns a dive into an orbit
+	# and fades out near SHIP_ORBIT_SPEED_MAX, so it can push the ship past the
+	# engine limit but cannot run away to the hard ceiling on its own.
 	var assist: Vector2 = run.assist_accel(self) if run != null else Vector2.ZERO
 	vel += assist * delta
 
@@ -116,11 +159,11 @@ func step(delta: float, dir: Vector2, want_boost: bool) -> void:
 	# have no such assist and are always bent by the same wells.
 	vel += run.gravity_ship_at(position) * delta
 
-	# Space drag / inertia.
-	vel *= 1.0 - EG.SHIP_DRAG * delta
-	var cap: float = EG.SHIP_MAX_SPEED * (EG.SHIP_BOOST_SPEED_MULT if boosting else 1.0)
-	if vel.length() > cap:
-		vel = vel.normalized() * cap
+	# Deep space: no linear drag. Only the hard safety ceiling can trim speed,
+	# and it never trims gravity gains below that.
+	var hard: float = vel.length()
+	if hard > EG.SHIP_SPEED_HARD:
+		vel = vel.normalized() * EG.SHIP_SPEED_HARD
 	if dash_time > 0.0:
 		vel = dash_dir * dash_speed
 		dash_time = maxf(0.0, dash_time - delta)
@@ -149,6 +192,9 @@ func _update_visual(delta: float) -> void:
 	if thrusting:
 		_trail.color = Color(0.5, 0.95, 1.0, 0.75) if boosting else Color(1.0, 0.65, 0.3, 0.55)
 		_trail.initial_velocity_max = 150.0 if boosting else 90.0
+	_streak.emitting = not thrusting and vel.length() > 260.0
+	if _streak.emitting:
+		_streak.color = Color(0.55, 0.86, 1.0, 0.22 + clampf(vel.length() / EG.SHIP_SPEED_HARD, 0.0, 1.0) * 0.35)
 
 func dash(dir: Vector2, speed: float, time: float) -> void:
 	dash_dir = dir.normalized() if dir.length() > 0.01 else Vector2.RIGHT.rotated(facing)

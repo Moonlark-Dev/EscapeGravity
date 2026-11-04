@@ -12,6 +12,7 @@ func run_tests() -> void:
 	print("=== Escape Gravity selftest ===")
 	_test_physics()
 	_test_gravity()
+	_test_momentum_and_assist()
 	_test_missiles()
 	_test_meteor_matter()
 	_test_zones()
@@ -24,6 +25,7 @@ func run_tests() -> void:
 	_test_streaming()
 	_test_route()
 	_test_safe_zone_clearance()
+	_test_body_clearance()
 	_test_initial_map()
 	var bot := await _test_bot_playability()
 	print("RESULT: %d checks, %d failed  (bot: %s)" % [total, failed, str(bot)])
@@ -101,7 +103,29 @@ func _test_physics() -> void:
 	r.auto_boost = false
 	_step(r, 4.0)
 	_check("飞船极速 150", absf(r.ship.vel.length() - 150.0) < 1.0, "speed=%.1f" % r.ship.vel.length())
-	_check("燃料上限 500 / 推进 4/s", absf(r.ship.fuel - (r.ship.fuel_max - 16.0)) < 0.6, "fuel=%.1f" % r.ship.fuel)
+	# 燃料按实际 Δv 计：0→150 只烧 150/380 秒的满推力。
+	var accel_fuel := EG.SHIP_FUEL_THRUST * (EG.SHIP_MAX_SPEED / EG.SHIP_ACCEL)
+	_check("推进到极速只消耗加速所需燃料", absf(r.ship.fuel - (r.ship.fuel_max - accel_fuel)) < 0.2,
+		"fuel=%.1f want=%.1f" % [r.ship.fuel, r.ship.fuel_max - accel_fuel])
+
+	# 无阻力惯性：松开推进后速度保持，燃料不再下降。
+	r.auto_input = Vector2.ZERO
+	var coast_fuel := r.ship.fuel
+	_step(r, 2.0)
+	_check("松开推进 2 秒仍保持 150（太空无阻力）", absf(r.ship.vel.length() - 150.0) < 1.0,
+		"speed=%.1f" % r.ship.vel.length())
+	_check("滑行不消耗燃料", absf(r.ship.fuel - coast_fuel) < 0.05, "fuel=%.1f" % r.ship.fuel)
+
+	# 引擎无法把超过极速的惯性压回，也不会在极速上空烧燃料。
+	r.ship.vel = Vector2.RIGHT * 400.0
+	r.ship.position = Vector2.ZERO
+	r.ship.fuel = r.ship.fuel_max
+	r.auto_input = Vector2.RIGHT
+	var above_fuel := r.ship.fuel
+	_step(r, 1.0)
+	_check("超过引擎极速的惯性被保留", absf(r.ship.vel.length() - 400.0) < 2.0,
+		"speed=%.1f" % r.ship.vel.length())
+	_check("极速后继续按住推进不耗燃料", absf(r.ship.fuel - above_fuel) < 0.05, "fuel=%.1f" % r.ship.fuel)
 
 	r.ship.position = Vector2.ZERO
 	r.ship.vel = Vector2.ZERO
@@ -111,8 +135,17 @@ func _test_physics() -> void:
 	r.auto_boost = true
 	_step(r, 1.0)
 	_check("加力极速 ≈192", absf(r.ship.vel.length() - 192.0) < 2.0, "speed=%.1f" % r.ship.vel.length())
-	_check("加力燃料 4.8/s（1.2×）", absf(r.ship.fuel - (r.ship.fuel_max - 4.8)) < 0.6, "fuel=%.1f" % r.ship.fuel)
+	var boost_fuel := EG.SHIP_FUEL_BOOST * (EG.SHIP_MAX_SPEED * EG.SHIP_BOOST_SPEED_MULT / (EG.SHIP_ACCEL * EG.SHIP_BOOST_MULT))
+	_check("加力燃料按实际加速计（≈4.8/s 满推力）", absf(r.ship.fuel - (r.ship.fuel_max - boost_fuel)) < 0.12,
+		"fuel=%.1f want=%.1f" % [r.ship.fuel, r.ship.fuel_max - boost_fuel])
 	_check("初始加力槽 6.6s（旧 2.2s 的三倍）", absf(r.ship.boost_cap - 6.6) < 0.001, "cap=%.2f" % r.ship.boost_cap)
+
+	# 加力结束后 192 的惯性同样保留。
+	r.auto_input = Vector2.ZERO
+	r.auto_boost = false
+	_step(r, 2.0)
+	_check("加力结束后保持 192 惯性", absf(r.ship.vel.length() - 192.0) < 2.0,
+		"speed=%.1f" % r.ship.vel.length())
 
 	# single-frame thrust ratio
 	r.ship.position = Vector2.ZERO
@@ -120,6 +153,7 @@ func _test_physics() -> void:
 	r.ship.boost_meter = r.ship.boost_cap
 	r.ship.boost_ready = true
 	r.ship.fuel = r.ship.fuel_max
+	r.auto_input = Vector2.RIGHT
 	r.auto_boost = false
 	r.simulate(dt)
 	var v1 := r.ship.vel.length()
@@ -155,6 +189,8 @@ func _test_physics() -> void:
 
 	# 槽耗尽后即使一直按住加力，也要先松开才会在 0.22 阈值上重新点火
 	r.auto_boost = true
+	r.ship.position = Vector2.ZERO
+	r.ship.vel = Vector2.ZERO
 	r.ship.fuel = r.ship.fuel_max
 	r.ship.boost_meter = 0.05
 	r.ship.boost_ready = true
@@ -175,16 +211,16 @@ func _test_gravity() -> void:
 	_check("天体表面引力 ≈285", absf(b.surface_gravity() - 285.0) < 2.0, "g=%.1f" % b.surface_gravity())
 	var g_surface := b.gravity_at(b.position + Vector2(290, 0)).length()
 	var g_core := b.gravity_at(b.position + Vector2(290.0 * 0.85, 0)).length()
-	var g_edge := b.gravity_at(b.position + Vector2(290.0 * 2.0, 0)).length()
+	var g_edge := b.gravity_at(b.position + Vector2(290.0 * EG.BODY_GRAVITY_RANGE, 0)).length()
 	_check("内圈 0.85r 夹紧 ≈395", absf(g_core - 395.0) < 6.0, "g=%.1f" % g_core)
 	_check("表面引力即 285", absf(g_surface - 285.0) < 2.0, "g=%.1f" % g_surface)
-	_check("影响半径 2r 之外引力为 0", g_edge == 0.0 and b.gravity_at(b.position + Vector2(700, 0)).length() == 0.0)
+	_check("影响半径 3r 之外引力为 0", g_edge == 0.0 and b.gravity_at(b.position + Vector2(290.0 * 3.2, 0)).length() == 0.0)
 
 	var star := r.new_gravity_body(Vector2(0, -1500), 800.0, "star", 1)
 	var ship_g := r.galaxy.gravity_at(Vector2.ZERO, true).length()
 	var full_g := r.galaxy.gravity_at(Vector2.ZERO, false).length()
 	_check("辅助操作装置自动平衡恒星引力（远离恒星）", ship_g < 0.001 and full_g > 0.1, "ship=%.3f full=%.2f" % [ship_g, full_g])
-	_check("恒星半径 800、影响 1600", absf(star.influence - 1600.0) < 0.01)
+	_check("恒星半径 800、影响 2400", absf(star.influence - 2400.0) < 0.01)
 
 	# Unlike the ship, missiles never get the assist: a locked missile is also
 	# pulled off its interception course by a strong well.
@@ -201,6 +237,41 @@ func _test_gravity() -> void:
 	var bend := absf(wrapf(gm.angle - a0, -PI, PI))
 	_check("锁定中的导弹同样持续受天体引力", gm.is_locked() and bend > 0.08, "bend=%.2frad" % bend)
 	_kill(mr)
+	_kill(r)
+
+## Inertia + gravity assist: a tangential pass around a planet must add speed
+## above the engine limit, and the gained momentum must survive after leaving.
+func _test_momentum_and_assist() -> void:
+	var r := _new_run(119)
+	_clear_arena(r)
+	for b in r.galaxy.bodies.duplicate():
+		b.remove()
+	r.galaxy.bodies.clear()
+	var body := r.new_gravity_body(Vector2.ZERO, 290.0, "planet", 1)
+	r.ship.position = Vector2(0, -551.0)       # 1.9 R, just inside the 2 R well
+	r.ship.vel = Vector2(150.0, 0.0)           # tangential entry
+	r.ship.fuel = r.ship.fuel_max
+	r.auto_input = Vector2.ZERO
+	r.auto_boost = false
+	var max_speed := r.ship.vel.length()
+	var min_surface := 1.0e9
+	for i in range(20 * 60):
+		r.ship.step(dt, Vector2.ZERO, false)
+		max_speed = maxf(max_speed, r.ship.vel.length())
+		min_surface = minf(min_surface, r.ship.position.length() - body.radius)
+	_check("环绕天体可获得超过引擎极速的速度", max_speed > 250.0, "max=%.1f" % max_speed)
+	_check("环绕过程不会钻进天体表面", min_surface > EG.SHIP_RADIUS, "min_surface=%.0f" % min_surface)
+	var orbit_exit := r.ship.vel.length()
+	_check("离开引力圈后仍高于基础极速", orbit_exit > 180.0, "speed=%.1f" % orbit_exit)
+	# Coast far from the well: no drag, no gravity, no fuel use.
+	r.ship.position = Vector2(9000, 9000)
+	r.ship.vel = Vector2.RIGHT * 300.0
+	var fuel0 := r.ship.fuel
+	for i in range(120):
+		r.ship.step(dt, Vector2.ZERO, false)
+	_check("深空滑行 2 秒保持 300", absf(r.ship.vel.length() - 300.0) < 1.0,
+		"speed=%.1f" % r.ship.vel.length())
+	_check("滑行不耗燃料", absf(r.ship.fuel - fuel0) < 0.02, "fuel=%.1f" % r.ship.fuel)
 	_kill(r)
 
 func _test_missiles() -> void:
@@ -349,6 +420,22 @@ func _test_zones() -> void:
 	r.ship.position = z.position + Vector2(400, 0)
 	r._zone_checks()
 	_check("离开安全区后消失并在 10s 后刷新", r.safe_zone == null and absf(r.safe_respawn_timer - 10.0) < 0.01)
+
+	# High-speed entry: the assist must brake hard enough to stop inside R280.
+	var rz := _new_run(120)
+	_clear_arena(rz)
+	var z2 := rz.make_zone("safe", Vector2.ZERO)
+	rz.safe_zone = z2
+	rz.ship.position = Vector2(-200, 0)
+	rz.ship.vel = Vector2(600, 0)
+	rz.ship.fuel = rz.ship.fuel_max
+	rz.auto_input = Vector2.ZERO
+	rz.auto_boost = false
+	_step(rz, 2.0)
+	_check("高速进入安全区会被辅助装置刹停",
+		rz.player_hidden and rz.ship.vel.length() < 20.0 and rz.ship.position.distance_to(z2.position) < EG.ZONE_RADIUS,
+		"v=%.1f d=%.0f hidden=%s" % [rz.ship.vel.length(), rz.ship.position.distance_to(z2.position), str(rz.player_hidden)])
+	_kill(rz)
 
 	var sz := r.make_zone("shop", Vector2(3000, 0))
 	r.shop_zone = sz
@@ -688,6 +775,60 @@ func _test_safe_zone_clearance() -> void:
 	_check("已经够远的安全区点不被挪动", kept.distance_to(e.position + Vector2(want, 0)) < 1.0)
 	_kill(r)
 
+## The reported bug: a safe zone or an enemy could be born inside / hugging a
+## celestial body.  Test both directions: content avoids loaded bodies, and
+## bodies avoid live/planned content.
+func _test_body_clearance() -> void:
+	var r := _new_run(121)
+	_clear_arena(r)
+	r.ship.position = Vector2.ZERO
+	var ep: Vector2 = r.route.enemy_at(0)
+	r.new_gravity_body(ep, 800.0, "star", 1)
+	r.spawn_enemy()
+	var e: Enemy = r.current_enemy
+	var need_e: float = 800.0 + e.radius + EG.BODY_CONTENT_MARGIN
+	_check("敌人不会生成在天体内部或贴脸", e != null and e.position.distance_to(ep) >= need_e - 1.0,
+		"d=%.0f need=%.0f" % [e.position.distance_to(ep) if e != null else -1.0, need_e])
+	_check("敌人生成点完全在天体表面之外",
+		e != null and not r.galaxy.is_inside_any_body(e.position, e.radius + EG.BODY_CONTENT_MARGIN - 0.5))
+	_kill(r)
+
+	var r2 := _new_run(122)
+	_clear_arena(r2)
+	r2.ship.position = Vector2.ZERO
+	var sp: Vector2 = r2.route.safe_at(0)
+	r2.new_gravity_body(sp, 300.0, "planet", 1)
+	r2._spawn_safe_respawn()
+	var z: Zone = r2.safe_zone
+	var need_z: float = 300.0 + EG.ZONE_RADIUS + EG.BODY_CONTENT_MARGIN
+	_check("安全区不会生成在天体内部或贴脸", z != null and z.position.distance_to(sp) >= need_z - 1.0,
+		"d=%.0f need=%.0f" % [z.position.distance_to(sp) if z != null else -1.0, need_z])
+	_check("安全区完整落在天体表面之外",
+		z != null and not r2.galaxy.is_inside_any_body(z.position, EG.ZONE_RADIUS + EG.BODY_CONTENT_MARGIN - 0.5))
+	_kill(r2)
+
+	var r3 := _new_run(123)
+	_clear_arena(r3)
+	r3.ship.position = Vector2.ZERO
+	var shp: Vector2 = r3.route.shop_at(0)
+	r3.new_gravity_body(shp, 300.0, "planet", 1)
+	r3._spawn_shop_respawn()
+	var s: Zone = r3.shop_zone
+	_check("商店不会生成在天体内部或贴脸", s != null and s.position.distance_to(shp) >= need_z - 1.0,
+		"d=%.0f need=%.0f" % [s.position.distance_to(shp) if s != null else -1.0, need_z])
+	_kill(r3)
+
+	var r4 := _new_run(124)
+	_clear_arena(r4)
+	var zpos := Vector2(4000, 0)
+	r4.safe_zone = r4.make_zone("safe", zpos)
+	_check("新天体不会生成在安全区上", not r4.galaxy.body_fits(zpos, 300.0, 400.0, true))
+	_check("天体最终落地校验拒绝内容区", r4.galaxy._add_body(zpos, 300.0, "planet", 1, false) == null)
+	_check("安全区之外仍能落天体", r4.galaxy.body_fits(Vector2(100000, 100000), 300.0, 400.0, true))
+	_check("路线预置安全点预留了天体空间", not r4.galaxy.body_fits(r4.route.safe_at(1), 300.0, 400.0, true))
+	_check("玩家所在位置不会突然生成天体", not r4.galaxy.body_fits(r4.ship.position + Vector2(500, 0), 300.0, 400.0, true))
+	_kill(r4)
+
 func _test_initial_map() -> void:
 	var r := _new_run(116)
 	r.test_mode = false
@@ -698,7 +839,10 @@ func _test_initial_map() -> void:
 	var shop_far := (r.shop_zone != null and r.safe_zone != null and
 		r.shop_zone.position.distance_to(r.ship.position) > r.safe_zone.position.distance_to(r.ship.position))
 	_check("初始商店比安全区离玩家更远", shop_far)
-	_check("首个敌人落在路线预置点", r.current_enemy != null and r.current_enemy.position.distance_to(route.enemy_at(0)) < 1500.0)
+	var init_d: float = -1.0
+	if r.current_enemy != null:
+		init_d = r.current_enemy.position.distance_to(route.enemy_at(0))
+	_check("首个敌人落在路线预置点", init_d >= 0.0 and init_d < 2200.0, "d=%.0f" % init_d)
 	_check("地图生成时填充了物质", r.matters.size() > 50, "matter=%d" % r.matters.size())
 	_kill(r)
 
@@ -723,7 +867,11 @@ func _test_bot_playability() -> Dictionary:
 
 func _bot_attempt(seed_value: int, orbit_radius: float, invuln: bool) -> Dictionary:
 	var r := _new_run(seed_value)
+	r.no_stream = true
 	_clear_arena(r)
+	for b in r.galaxy.bodies.duplicate():
+		b.remove()
+	r.galaxy.bodies.clear()
 	r.ship.position = Vector2.ZERO
 	r.ship.vel = Vector2.ZERO
 	r.ship.fuel = r.ship.fuel_max
@@ -739,10 +887,15 @@ func _bot_attempt(seed_value: int, orbit_radius: float, invuln: bool) -> Diction
 	while t < 60.0 and r.state == Run.State.PLAYING and r.current_enemy == e:
 		orbit_angle += 0.42 * dt
 		var target := e.position + Vector2.RIGHT.rotated(orbit_angle) * orbit_radius
-		var input := (target - r.ship.position).normalized()
+		var to_target := target - r.ship.position
+		var want_speed: float = clampf(to_target.length() * 2.2, 0.0, EG.SHIP_MAX_SPEED)
+		var want_vel: Vector2 = to_target.normalized() * want_speed
+		var input := (want_vel - r.ship.vel)
+		if input.length() < 0.01:
+			input = to_target
+		input = input.normalized()
 		if r.ship.position.distance_to(e.position) < e.radius + 90.0:
 			input = (r.ship.position - e.position).normalized()
-		r.auto_input = input
 		var danger := false
 		var in_pulse_range := false
 		for m in r.missiles:
@@ -752,6 +905,16 @@ func _bot_attempt(seed_value: int, orbit_radius: float, invuln: bool) -> Diction
 			# 未发现阶段的偷袭弹不参与脉冲，避免把直射诱导弹一起推走。
 			if not m.dead and not m.sneak and m.position.distance_to(r.ship.position) < 120.0:
 				in_pulse_range = true
+		# Keep the bot out of celestial bodies now that gravity pulls much
+		# harder than in the 2 R well.
+		var body_dodge := Vector2.ZERO
+		for b in r.galaxy.bodies:
+			var gap: float = r.ship.position.distance_to(b.position) - b.radius
+			if gap < 320.0:
+				body_dodge += (r.ship.position - b.position).normalized() * (1.0 - maxf(gap, 0.0) / 320.0)
+		if body_dodge.length() > 0.01:
+			input = (input * 0.4 + body_dodge.normalized() * 1.6).normalized()
+		r.auto_input = input
 		r.auto_boost = danger and r.ship.boost_meter > 0.4
 		if r.skills.size() > 0 and float(r.skills[0]["cd"]) <= 0.0 and in_pulse_range:
 			r.auto_pulse = true

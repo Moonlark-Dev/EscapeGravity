@@ -124,7 +124,7 @@ func _build_title() -> void:
 	best.position = Vector2(30, 660)
 	best.size = Vector2(700, 30)
 	_content.add_child(best)
-	var ver := _label("v1.0.4", 13, EG.C_DIM)
+	var ver := _label("v1.0.5", 13, EG.C_DIM)
 	ver.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	ver.offset_left = -140
 	ver.offset_top = -44
@@ -304,8 +304,9 @@ func _build_howto() -> void:
 	var top := 82.0
 	var sections := [
 		["没有武器", "你不能开火。唯一能伤害攻击者的东西，\n是它自己发射的追踪导弹。让导弹撞上它的外壳。", EG.C_AMBER],
-		["导弹的规律", "导弹速度与你的基础速度相同（150），\n转向半径约 286 px。锁定你 5 秒后脱锁，\n之后只会直线飞行，但仍会被天体引力弯折。", EG.C_TEXT],
+		["导弹的规律", "导弹 150，你的推进极速也是 150；\n但天体引力能把你甩到 720。锁定你 5 秒后脱锁，\n之后只会直线飞行，但仍会被天体引力弯折。", EG.C_TEXT],
 		["怎么诱导", "贴着攻击者绕圈，让它的转弯弧线切进外壳；\n或者在最后一刻用脉冲把导弹沿切线甩进外壳。\n被击中的攻击者会过载停火 2.5 秒。", EG.C_CYAN],
+		["惯性与引力", "松开推进不会减速；燃料只在实际加速、减速或转向时消耗。\n贴近行星时辅助装置会自动绕行加速，离开引力圈后速度保留。", EG.C_MINT],
 	]
 	var y := top
 	for sec in sections:
@@ -319,12 +320,12 @@ func _build_howto() -> void:
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		p.add_child(b)
 		y += 118
-	var controls := _label("操作\nWASD / 方向键 / 左摇杆：推进（有惯性）\nShift / LS：加力（3 倍推力，1.2× 燃料）\nJ / K（Y / B）：技能 1 / 2\nQ / E：切换物品　F / X：使用物品\n1-3：升级 / 商店选择　Esc：暂停", 14, EG.C_TEXT)
+	var controls := _label("操作\nWASD / 方向键 / 左摇杆：推进（松开后保持惯性）\nShift / LS：加力（3 倍推力，1.2× 燃料）\nJ / K（Y / B）：技能 1 / 2\nQ / E：切换物品　F / X：使用物品\n1-3：升级 / 商店选择　Esc：暂停", 14, EG.C_TEXT)
 	controls.position = Vector2(640, top)
 	controls.size = Vector2(390, 190)
 	controls.add_theme_constant_override("line_spacing", 4)
 	p.add_child(controls)
-	var rules := _label("生存规则\n护盾 20，敌方导弹伤害 25：挨一发就结束。\n陨石只磨损 0.5，但被你撞飞的陨石能对攻击者造成 5 伤害。\n燃料 500；耗尽后只能靠惯性漂移。\n安全区：补满燃料、清除导弹、隐藏威胁信息。\n商店：用代币购买道具。\n辅助操作装置自动平衡天体引力；导弹没有它，始终被引力弯折。", 14, EG.C_DIM)
+	var rules := _label("生存规则\n护盾 20，敌方导弹伤害 25：挨一发就结束。\n陨石只磨损 0.5，但被你撞飞的陨石能对攻击者造成 5 伤害。\n燃料 500；只有实际加速/减速/转向耗油，滑行免费。\n安全区：补满燃料、清除导弹、隐藏威胁信息。\n商店：用代币购买道具。\n贴近行星会自动绕行加速；导弹没有辅助装置，始终被引力弯折。", 14, EG.C_DIM)
 	rules.position = Vector2(640, top + 205)
 	rules.size = Vector2(390, 190)
 	rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -333,22 +334,22 @@ func _build_howto() -> void:
 	ship_icon.texture = Assets.world("ship")
 	ship_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	ship_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	ship_icon.position = Vector2(90, 462)
-	ship_icon.size = Vector2(100, 100)
+	ship_icon.position = Vector2(96, 552)
+	ship_icon.size = Vector2(64, 64)
 	p.add_child(ship_icon)
 	var mis := TextureRect.new()
 	mis.texture = Assets.world("missile")
 	mis.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	mis.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	mis.position = Vector2(245, 480)
-	mis.size = Vector2(120, 62)
+	mis.position = Vector2(176, 560)
+	mis.size = Vector2(92, 48)
 	p.add_child(mis)
 	var tur := TextureRect.new()
 	tur.texture = Assets.world("turret")
 	tur.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	tur.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	tur.position = Vector2(430, 452)
-	tur.size = Vector2(130, 130)
+	tur.position = Vector2(430, 540)
+	tur.size = Vector2(80, 80)
 	tur.modulate = Color(1, 1, 1, 0.85)
 	p.add_child(tur)
 	var back := Assets.button("返回", 18)

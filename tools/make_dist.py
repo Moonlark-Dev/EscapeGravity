@@ -9,10 +9,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / "dist"
-VERSION = "1.0.4"
+VERSION = "1.0.5"
 GAME = "EscapeGravity"
 
-RUN_README = """Escape Gravity 1.0.4
+RUN_README = """Escape Gravity 1.0.5
 ====================
 
 一款 2D 俯视角、物理驱动、无直接攻击的太空肉鸽。
@@ -25,7 +25,7 @@ Windows 10 / 11 64 位；约 140 MB 磁盘；支持 OpenGL 3.3 的显卡。
 
 操作
 ----
-W A S D / 方向键   推进（有惯性）
+W A S D / 方向键   推进（松开后保持惯性）
 Shift              加力（3 倍推力，1.2 倍燃料消耗）
 J / K              技能 1 / 2
 Q / E              切换物品
@@ -36,6 +36,9 @@ R                  失败后重开
 
 玩法要点
 --------
+- 太空没有阻力：松开推进不会减速，燃料只在实际加速、减速或转向时消耗。
+- 推进极速 150，加力 192；贴近行星会自动绕行加速，离开引力圈后速度保留（安全上限 720）。
+- 高速冲进安全区时，辅助装置会自动反推，把飞船停在 R280 圈内。
 - 导弹锁定你 5 秒后脱锁；让它撞上炮塔的外壳，每发 25 伤害，两发摧毁。
 - 护盾只有 20，敌方导弹 25：挨一发就结束。
 - 贴着炮塔绕圈，或用脉冲把导弹沿切线甩进外壳。
@@ -51,7 +54,7 @@ R                  失败后重开
 - 设置、最佳深度等保存在 %APPDATA%/Godot/app_userdata/Escape Gravity/。
 - 字体：WenQuanYi Zen Hei（GPL-2 + 字体嵌入例外）。完整许可见 LICENSES/。
 
-版本 1.0.4 · 2026-11-03
+版本 1.0.5 · 2026-11-04
 """
 
 LICENSE_README = "第三方声明与字体许可，见 THIRD_PARTY_NOTICES.md 与 LICENSES/。\n"
@@ -110,12 +113,12 @@ def main() -> None:
 
     install_note = DIST / "ANDROID-安装说明.txt"
     install_note.write_text(
-        "Escape Gravity 1.0.4（Android arm64）\n"
+        "Escape Gravity 1.0.5（Android arm64）\n"
         "1. 允许“安装未知来源应用”；\n"
-        "2. 安装 EscapeGravity-1.0.4-android-arm64.apk；\n"
+        "2. 安装 EscapeGravity-1.0.5-android-arm64.apk；\n"
         "3. 横屏游玩，进入游戏后使用左侧虚拟摇杆与右侧加力/技能按钮；\n"
         "4. 需要 Android 7.0+ arm64 设备。\n"
-        "minSdk 24 / targetSdk 36 / versionCode 5 / 包名 com.escapegravity.game\n",
+        "minSdk 24 / targetSdk 36 / versionCode 6 / 包名 com.escapegravity.game\n",
         encoding="utf-8",
     )
 

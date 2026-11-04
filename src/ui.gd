@@ -21,6 +21,7 @@ var _level_label: Label
 var _fuel_bar: TextureProgressBar
 var _fuel_label: Label
 var _boost_bar: TextureProgressBar
+var _speed_label: Label
 var _depth_label: Label
 var _enemy_holder: Control
 var _enemy_bar: TextureProgressBar
@@ -173,6 +174,14 @@ func _build_bars() -> void:
 	_boost_bar.max_value = EG.SHIP_BOOST_MAX
 	_boost_bar.value = EG.SHIP_BOOST_MAX
 	holder.add_child(_boost_bar)
+
+	# Speed readout: turns cyan past the engine limit and amber past 400, so a
+	# gravity-assisted launch is readable even when the camera lags behind.
+	_speed_label = Assets.label("速度 0", 12, EG.C_DIM)
+	_speed_label.position = Vector2(222, 72)
+	_speed_label.size = Vector2(118, 16)
+	_speed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	holder.add_child(_speed_label)
 
 	_depth_label = Assets.label("深度 1 · 击杀 0", 13, EG.C_DIM)
 	_depth_label.position = Vector2(28, 94)
@@ -599,6 +608,16 @@ func refresh() -> void:
 	_fuel_label.text = "%d" % roundi(ship.fuel)
 	_boost_bar.max_value = ship.boost_cap
 	_boost_bar.value = ship.boost_meter
+	var speed: float = ship.vel.length()
+	_speed_label.text = ("引力加速 %d" % roundi(speed)) if run.orbit_assist else ("速度 %d" % roundi(speed))
+	var speed_col := EG.C_DIM
+	if speed > 400.0:
+		speed_col = EG.C_AMBER
+	elif speed > EG.SHIP_MAX_SPEED * EG.SHIP_BOOST_SPEED_MULT:
+		speed_col = EG.C_CYAN
+	elif run.orbit_assist:
+		speed_col = EG.C_MINT
+	_speed_label.add_theme_color_override("font_color", speed_col)
 	_depth_label.text = "深度 %d · 击杀 %d" % [run.depth, run.kills]
 	_token_label.text = str(run.tokens)
 	_refresh_enemy()

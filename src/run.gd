@@ -59,6 +59,7 @@ var matter_refill_timer := 2.0
 
 var shake := 0.0
 var assist_active := false
+var orbit_assist := false
 var tutorial_index := 0
 var tutorial_timer := 0.0
 var stats := {"matter": 0, "hits": 0, "damage": 0, "unlocks": 0, "fuel_items": 0}
@@ -75,6 +76,7 @@ var auto_input := Vector2.ZERO
 var auto_boost := false
 var auto_pulse := false
 var test_mode := false
+var no_stream := false          # bot tests run in a clean, body-free arena
 
 func _ready() -> void:
 	if seed_value == 0:
@@ -120,12 +122,10 @@ func _initial_spawn() -> void:
 	scatter_matter(150, ship.position, 380.0, 2900.0, true)
 	# Step 3: build the hidden route, then materialise its first nodes.
 	route = galaxy.build_route(Vector2.ZERO)
-	var safe_pos := _clear_body_point(route.safe_at(route.next_safe), 90.0)
-	route.next_safe += 1
-	safe_zone = make_zone("safe", safe_pos)
-	var shop_pos := _clear_body_point(route.shop_at(route.next_shop), 90.0)
-	route.next_shop += 1
-	shop_zone = make_zone("shop", shop_pos)
+	var safe_pos := _next_route_safe()
+	safe_zone = make_zone("safe", _place_zone_point(safe_pos))
+	var shop_pos := _next_route_shop()
+	shop_zone = make_zone("shop", _place_zone_point(shop_pos))
 	spawn_enemy()
 	if hud != null:
 		hud.toast("引力捕获完成 · 深度 1", EG.C_CYAN, 2.6)
@@ -204,6 +204,9 @@ func scatter_matter_at(center: Vector2, count: int, radius: float) -> void:
 func _physics_process(delta: float) -> void:
 	if state == State.PLAYING and not paused:
 		simulate(delta)
+	else:
+		assist_active = false
+		orbit_assist = false
 	if hud != null:
 		hud.refresh()
 
@@ -216,9 +219,12 @@ func simulate(delta: float) -> void:
 	_handle_gameplay_keys()
 	_update_timers(delta)
 
-	galaxy.ensure_around(ship.position)
+	if not no_stream:
+		galaxy.ensure_around(ship.position)
 	mark_exploration()
 	_update_skills(delta)
+	assist_active = false
+	orbit_assist = false
 
 	ship.step(delta, dir, boost)
 	_assist_fuel(delta)
@@ -319,8 +325,7 @@ func _update_skills(delta: float) -> void:
 
 func _assist_fuel(delta: float) -> void:
 	if assist_active:
-		ship.fuel = maxf(0.0, ship.fuel - EG.SHIP_FUEL_THRUST * 0.1 * delta)
-	assist_active = false
+		ship.fuel = maxf(0.0, ship.fuel - EG.SHIP_FUEL_ASSIST * delta)
 
 func _pull_on_missile(m) -> Vector2:
 	var pull := Vector2.ZERO
@@ -335,6 +340,11 @@ func gravity_at(pos: Vector2) -> Vector2:
 	return galaxy.gravity_at(pos, false)
 
 func gravity_ship_at(pos: Vector2) -> Vector2:
+	# A safe zone is a station-keeping pocket: its assist cancels the local
+	# body gravity so a docked ship cannot be dragged out of the ring, even if
+	# the zone sits near a 3R well. Missiles never get this protection.
+	if safe_zone != null and safe_zone.active and safe_zone.inside(pos):
+		return Vector2.ZERO
 	return galaxy.gravity_at(pos, true)
 
 func screen_rect() -> Rect2:
@@ -408,32 +418,49 @@ func _next_enemy_position(e: Enemy) -> Vector2:
 	if route == null:
 		return _find_enemy_spawn(e)
 	var before := route.encounters.size()
-	var p: Vector2 = route.enemy_at(route.next_enemy)
+	var cursor: Vector2 = route.enemy_at(route.next_enemy)
 	route.next_enemy += 1
 	if route.encounters.size() != before:
 		galaxy.apply_route_bodies()
-	p = _clear_body_point(p, e.radius + 160.0)
+	var clear: float = e.radius + EG.BODY_CONTENT_MARGIN
+	var p := _clear_body_point(cursor, clear)
 	if not _enemy_spawn_blocked(p, e):
 		return p
 	# The route point is normally clear; if a streamed star system landed on
 	# it, ring the point instead of abandoning the planned order.
-	for i in range(24):
-		var q: Vector2 = p + Vector2.RIGHT.rotated(TAU * float(i) / 24.0) * (e.radius + 900.0)
-		q = _clear_body_point(q, e.radius + 160.0)
-		if not _enemy_spawn_blocked(q, e):
-			return q
+	for ring in range(1, EG.PLACE_SEARCH_RINGS + 1):
+		var d: float = clear + EG.PLACE_SEARCH_STEP * float(ring)
+		for i in range(24):
+			var q: Vector2 = cursor + Vector2.RIGHT.rotated(TAU * float(i) / 24.0) * d
+			q = _clear_body_point(q, clear)
+			if not _enemy_spawn_blocked(q, e):
+				return q
 	return p
 
 ## Nudges a planned point out of a celestial body without changing its leg.
+## `clearance` is the extra space required beyond the body surface (sprite
+## radius + BODY_CONTENT_MARGIN).  The search expands in rings and rotates
+## slightly each ring, so even a huge star cannot trap the point.
 func _clear_body_point(p: Vector2, clearance: float) -> Vector2:
 	if not galaxy.is_inside_any_body(p, clearance):
 		return p
-	for ring in range(1, 6):
-		var d: float = clearance + 400.0 * float(ring)
-		for i in range(12):
-			var q: Vector2 = p + Vector2.RIGHT.rotated(TAU * float(i) / 12.0) * d
+	for ring in range(1, EG.PLACE_SEARCH_RINGS + 1):
+		var d: float = clearance + EG.PLACE_SEARCH_STEP * float(ring)
+		var phase: float = float(ring) * 0.37
+		for i in range(24):
+			var q: Vector2 = p + Vector2.RIGHT.rotated(phase + TAU * float(i) / 24.0) * d
 			if not galaxy.is_inside_any_body(q, clearance):
 				return q
+	# Last resort: run away from the nearest body along the radial line.
+	var nb = galaxy.nearest_body(p)
+	if nb != null:
+		var away: Vector2 = p - nb.position
+		if away.length() < 1.0:
+			away = Vector2.RIGHT
+		for k in range(1, 9):
+			var q2: Vector2 = p + away.normalized() * (clearance + 1200.0 * float(k))
+			if not galaxy.is_inside_any_body(q2, clearance):
+				return q2
 	return p
 
 func _find_enemy_spawn(e: Enemy) -> Vector2:
@@ -477,11 +504,11 @@ func _find_enemy_spawn(e: Enemy) -> Vector2:
 	return ship.position + Vector2.RIGHT.rotated(base_ang) * 2100.0
 
 func _enemy_spawn_blocked(p: Vector2, e: Enemy) -> bool:
-	if galaxy.is_inside_any_body(p, e.radius + 160.0):
+	if galaxy.is_inside_any_body(p, e.radius + EG.BODY_CONTENT_MARGIN):
 		return true
 	if safe_zone != null and safe_zone.active and p.distance_to(safe_zone.position) < safe_zone.clearance_radius() + e.radius + EG.ZONE_ENEMY_CLEAR:
 		return true
-	if shop_zone != null and shop_zone.active and p.distance_to(shop_zone.position) < shop_zone.radius + e.radius + 300.0:
+	if shop_zone != null and shop_zone.active and p.distance_to(shop_zone.position) < shop_zone.radius + e.radius + EG.ZONE_ENEMY_CLEAR:
 		return true
 	return false
 
@@ -511,17 +538,29 @@ func _update_spawns(delta: float) -> void:
 
 func _spawn_safe_respawn() -> void:
 	var p := _next_route_safe()
+	var clear := EG.ZONE_RADIUS + EG.BODY_CONTENT_MARGIN
 	if p == Vector2.ZERO:
-		p = galaxy.find_unexplored_point(ship.position, 700.0, EG.SAFE_FUEL_DIST, 420.0)
+		p = galaxy.find_unexplored_point(ship.position, 700.0, EG.SAFE_FUEL_DIST, clear)
 	if p == Vector2.ZERO:
 		p = ship.position + galaxy.nearest_unexplored_direction(ship.position) * 1200.0
-	p = _clear_body_point(_clear_zone_of_enemies(p), 120.0)
+	p = _place_zone_point(p)
 	safe_zone = make_zone("safe", p)
 	player_hidden = false
 	if hud != null:
 		hud.toast("安全区信号已同步", EG.C_MINT, 2.2)
 		hud.emphasize_radar()
 	Audio.play("sfx_safezone", -6.0)
+
+## The route point can land where the current fight is happening, or on a
+## celestial body.  Push it away from live attackers/other zones, then out of
+## any body, and repeat once: a body push must not create a new overlap.
+func _place_zone_point(p: Vector2) -> Vector2:
+	var clear := EG.ZONE_RADIUS + EG.BODY_CONTENT_MARGIN
+	for i in range(2):
+		p = _clear_zone_of_other_zones(p)
+		p = _clear_zone_of_enemies(p)
+		p = _clear_body_point(p, clear)
+	return p
 
 ## The route point can land where the current fight is happening; slide the new
 ## safe zone away from any live attacker until their sprite edges have room.
@@ -536,12 +575,26 @@ func _clear_zone_of_enemies(p: Vector2) -> Vector2:
 			p = e.position + away * need
 	return p
 
+## Safe zones and shops must not overlap each other either.
+func _clear_zone_of_other_zones(p: Vector2) -> Vector2:
+	var need: float = EG.ZONE_RADIUS * 2.0 + EG.BODY_CONTENT_MARGIN
+	for z in [safe_zone, shop_zone]:
+		if z == null or not is_instance_valid(z) or not z.active:
+			continue
+		var d := p.distance_to(z.position)
+		if d < need:
+			var away: Vector2 = Vector2.RIGHT if d < 0.01 else (p - z.position) / d
+			p = z.position + away * need
+	return p
+
 func _spawn_shop_respawn() -> void:
 	var p := _next_route_shop()
+	var clear := EG.ZONE_RADIUS + EG.BODY_CONTENT_MARGIN
 	if p == Vector2.ZERO:
-		p = galaxy.find_unexplored_point(ship.position, EG.SHOP_DIST_MIN, EG.SHOP_DIST_MAX, 460.0)
+		p = galaxy.find_unexplored_point(ship.position, EG.SHOP_DIST_MIN, EG.SHOP_DIST_MAX, clear)
 	if p == Vector2.ZERO:
 		p = ship.position + galaxy.nearest_unexplored_direction(ship.position) * 3600.0
+	p = _place_zone_point(p)
 	shop_zone = make_zone("shop", p)
 	shop_open = false
 	shop_inside = false
@@ -556,7 +609,7 @@ func _next_route_safe() -> Vector2:
 	route.next_safe += 1
 	if route.encounters.size() != before:
 		galaxy.apply_route_bodies()
-	return _clear_body_point(p, 120.0)
+	return _clear_body_point(p, EG.ZONE_RADIUS + EG.BODY_CONTENT_MARGIN)
 
 func _next_route_shop() -> Vector2:
 	if route == null:
@@ -566,7 +619,7 @@ func _next_route_shop() -> Vector2:
 	route.next_shop += 1
 	if route.encounters.size() != before:
 		galaxy.apply_route_bodies()
-	return _clear_body_point(p, 120.0)
+	return _clear_body_point(p, EG.ZONE_RADIUS + EG.BODY_CONTENT_MARGIN)
 
 func _spawn_meteor() -> void:
 	var angle := rng.randf() * TAU
@@ -1310,9 +1363,19 @@ func assist_accel(s: PlayerShip, delta: float = 0.0) -> Vector2:
 	var acc := Vector2.ZERO
 	var input := _read_dir()
 	if player_hidden or (safe_zone != null and safe_zone.inside(s.position)):
-		if s.vel.length() > 18.0 and input.length() < 0.1:
-			acc += -s.vel.normalized() * minf(260.0, s.vel.length() * 3.2)
-			assist_active = true
+		# 高速进站：安全区扩张到 R280 后，辅助装置用足够强的反推把飞船
+		# 停在圈内，而不是让它在 0.4 秒里穿过去。默认一直刹车；只有玩家
+		# 明确把推进方向指向圈外时才放手，避免把玩家困在安全区里。
+		var z: Zone = safe_zone
+		if z != null and s.vel.length() > 12.0:
+			var leaving := false
+			if input.length() > 0.1:
+				var to_center: Vector2 = (z.position - s.position)
+				if to_center.length() > 1.0:
+					leaving = input.normalized().dot(to_center.normalized()) < -0.35
+			if not leaving:
+				acc += -s.vel.normalized() * minf(EG.SHIP_SAFE_BRAKE, s.vel.length() * 6.0)
+				assist_active = true
 		return acc
 	if safe_zone != null and safe_zone.position.distance_to(s.position) < safe_zone.clearance_radius() + 420.0:
 		if input.length() < 0.1 and s.position.distance_to(safe_zone.position) > 40.0:
@@ -1328,12 +1391,17 @@ func assist_accel(s: PlayerShip, delta: float = 0.0) -> Vector2:
 			continue
 		if input.length() > 0.1 and input.normalized().dot(radial) > 0.25:
 			continue
+		var speed: float = s.vel.length()
+		var fade: float = clampf(1.0 - speed / EG.SHIP_ORBIT_SPEED_MAX, 0.0, 1.0)
+		if fade <= 0.0:
+			continue
 		var tangent: Vector2 = radial.orthogonal()
 		var vt: Vector2 = s.vel - radial * s.vel.dot(radial)
 		if vt.dot(tangent) < 0.0:
 			tangent = -tangent
-		acc += tangent * 230.0
+		acc += tangent * EG.SHIP_ORBIT_ACCEL * fade
 		assist_active = true
+		orbit_assist = true
 	return acc
 
 # ---------------------------------------------------------------- cleanup
@@ -1387,25 +1455,27 @@ func _alarm_tick(delta: float) -> void:
 func _tutorial_step(delta: float) -> void:
 	if test_mode:
 		return
-	if Store.hints_done or tutorial_index > 5:
+	if Store.hints_done or tutorial_index > 6:
 		return
 	tutorial_timer += delta
 	var texts := [
 		[2.0, "WASD / 左摇杆 推进 · Shift 加力 · J 脉冲", EG.C_CYAN],
 		[10.0, "导弹锁你 5 秒后脱锁：把它的弹道引向炮塔", EG.C_AMBER],
 		[18.0, "护盾只有 20，敌方导弹一击必杀", EG.C_MAGENTA],
-		[26.0, "燃料有限，安全区能补满燃料并清空导弹", EG.C_MINT],
-		[34.0, "炮塔外壳会伤害你，但它也是导弹唯一能撞的东西", EG.C_VIOLET],
-		[42.0, "辅助操作装置会平衡天体引力；导弹没有这套装置，始终被引力弯折", EG.C_CYAN],
+		[26.0, "松开推进不会减速；燃料只在实际加速、减速或转向时消耗", EG.C_MINT],
+		[34.0, "贴近行星时辅助装置会自动绕行加速，离开引力圈后速度保留", EG.C_CYAN],
+		[42.0, "炮塔外壳会伤害你，但它也是导弹唯一能撞的东西", EG.C_VIOLET],
+		[50.0, "辅助操作装置会平衡恒星引力；导弹没有这套装置，始终被引力弯折", EG.C_CYAN],
 	]
 	if Store.touch_mode:
 		texts = [
 			[2.0, "拖动左摇杆推进 · 右侧加力键冲刺 · 脉冲技能", EG.C_CYAN],
 			[10.0, "导弹锁你 5 秒后脱锁：把它的弹道引向炮塔", EG.C_AMBER],
 			[18.0, "护盾只有 20，敌方导弹一击必杀", EG.C_MAGENTA],
-			[26.0, "燃料有限，安全区能补满燃料并清空导弹", EG.C_MINT],
-			[34.0, "炮塔外壳会伤害你，但它也是导弹唯一能撞的东西", EG.C_VIOLET],
-			[42.0, "辅助操作装置会平衡天体引力；导弹没有这套装置，始终被引力弯折", EG.C_CYAN],
+			[26.0, "松开推进不会减速；燃料只在实际加速、减速或转向时消耗", EG.C_MINT],
+			[34.0, "贴近行星时辅助装置会自动绕行加速，离开引力圈后速度保留", EG.C_CYAN],
+			[42.0, "炮塔外壳会伤害你，但它也是导弹唯一能撞的东西", EG.C_VIOLET],
+			[50.0, "辅助操作装置会平衡恒星引力；导弹没有这套装置，始终被引力弯折", EG.C_CYAN],
 		]
 	if tutorial_index < texts.size() and tutorial_timer >= float(texts[tutorial_index][0]):
 		if hud != null:

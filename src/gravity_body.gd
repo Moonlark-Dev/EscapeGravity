@@ -1,7 +1,9 @@
 class_name GravityBody
 extends Node2D
 ## A planet or star. Visuals are pre-rendered sprites; gravity follows the doc:
-## g = M / r^2 with an inner clamp at 0.85 R, zero outside 2 R (smooth 15% edge).
+## g = M / r^2 with an inner clamp at 0.85 R, zero outside BODY_GRAVITY_RANGE R
+## (smooth 15% edge).  The 3 R well is what gives a tangential pass enough time
+## to bend into an orbit and fling the ship out faster than its engine can.
 
 var radius := 260.0
 var mass := 0.0
