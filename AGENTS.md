@@ -96,8 +96,8 @@ escape-gravity-release/
 - **未发现也会开火**：`enemy._fire_hidden` 在屏幕边缘外 180~320px 生成偷袭弹，切线初速让它绕弧切入；72% 的方向落在敌人方位 ±57° 内，其余全随机。偷袭弹 `sneak=true`，单独上限 `ENEMY_HIDDEN_MAX=2`，且**不占**正常 3 枚直射名额。别用 `locked_missile_count()` 把它们算进去，否则会挤掉正面齐射、破坏诱导循环。
 - **出生区是敌对区**：`_initial_spawn` 不再生成安全区，`safe_unlocked=false`；击毁首个攻击者后 `_unlock_safe_after_first_kill` 才解锁，并把 `route.next_safe` 直接推到 1，跳过出生点旁的安全区节点。别把初始安全区加回来，也别在未解锁时让 `_update_spawns` 刷新安全区。
 - **安全区与敌人保持间距**：安全区预置在相邻两段敌人的中点（`SAFE_T=0.50`，首段 `SAFE_FIRST_T=0.35`），横向偏移 470~600，圆心离两侧敌人预置点 ≥1150；刷新时 `_clear_zone_of_enemies` 会按 `ZONE_ENEMY_CLEAR=520` 推开正在交战的敌人，敌人刷新校验同一间距。别再把安全区挪回贴着上一场战斗的位置。安全区出生时只有 `ZONE_ENTRY_RADIUS=78`，但所有间距/引力/燃料判定都用 `clearance_radius()`（恒为完整 280）；玩家到中心才扩张，扩张同一帧把 `radius` 设为 280，动画只影响外观。只有安全区内 `gravity_ship_at` 返回零（station-keeping），否则 3R 引力圈会把握停的飞船拖出去。
-- **安全区引力会甩飞飞船**：安全区外圈（`clearance_radius()+420` 内、尚未进入）在飞船有切线速度时，`assist_accel` 会沿切线施加 `ZONE_ORBIT_ACCEL=230 × (1-speed/600)`，切线速度需 >`ZONE_ORBIT_MIN_TANGENT=45`；高速切线掠过可以越甩越快并离开引力圈。减速或对准中心时，原来的向心牵引与 R78 触发圈会正常捕获；进圈后仍由 `SHIP_SAFE_BRAKE=1400` 停靠。不要新增随机“异常安全区”类型，也不要让外圈永远只吸不甩。
-- **物质牵引会甩飞物质**：牵引场是有限力。飞船速度 >`MATTER_FLING_SHIP_SPEED=240` 且航向与“飞船→物质”方向点积 <`MATTER_FLING_HEADING_DOT=0.55`（高速侧掠）时，`Matter._can_fling` 成立，物质以 `MATTER_FLING_IMPULSE=360` 以上甩向尾迹 0.65s，冷却 1.2s；正面接近或低速仍走原来的吸附。所有物质共用同一判断。
+- **安全区必须可靠吸入**：`assist_accel` 在 `clearance_radius()+420`（700px）影响圈内**持续**施加 `ZONE_GRAVITY=120` 向心牵引，不再只在无输入时生效；同时制动向外的径向速度（`SHIP_SAFE_BRAKE=1400`）和切向速度。高速切线/边缘掠过也会被拖慢并拉回 R280 内停靠，不能把玩家甩飞；玩家明确朝圈外推进（输入点积 < -0.35）时仍可脱离。进圈后仍由 1400 px/s² 反推停靠。
+- **物质必须可靠吸收**：`MATTER_ABSORB=240`，牵引加速度 400~1400，牵引速度上限 `MATTER_TRACTOR_SPEED=900`（高于飞船外部上限 720），并有 `MATTER_TRACTOR_LOCK=4s` 的牵引锁定，28px 内拾取。即使玩家高速侧掠或正在远离，物质也会追上并被吸收，不能出现“靠近后被甩飞”的行为。
 - **商店绑定敌人深度**：创建商店时记录 `shop_bound_depth=depth`。如果玩家没有使用商店、并且击毁了所属敌人和下一个敌人（`depth > shop_bound_depth + 1`），`_maybe_refresh_shop` 会移除旧信标并在下一个路线商店点重新生成；使用商店离开后仍按 `SHOP_RESPAWN=26` 计时。别让被跳过的商店永远留在身后。
 - **空白路径可能藏加速天体**：`RunRoute._make_route_body` 有 42% 概率尝试把该段的天体锚点放进两个敌人之间的空白路径（`PATH_BODY_T=0.56~0.78`、横向 ≤160、半径 140~180），只有避开安全区/商店/两侧敌人/已生成路线天体时才接受，否则回退到原侧方锚点（`BODY_T=0.50`、偏移 380~480）。每段仍保证有一个天体锚点。
 - **无限地图**：`Backdrop._process` 必须用相机中心 `c` 锚定图层；删掉 `c` 项会导致离开初始区块后背景消失。`Galaxy.LOAD_RADIUS=3`、`MAX_BODIES=90`，空区块保底一颗天体；`Galaxy._generate_chunk` 会为落在该区块的路线段补一颗行星；物质每 2 秒按飞船周边 3400px 数量补充，5200px 外回收。
@@ -150,7 +150,7 @@ python3 tools/make_dist.py
 
 改动运行逻辑后，至少完成：
 
-1. `RESULT: 138 checks, 0 failed`；导出包内再跑一次 `./build/linux/EscapeGravity.x86_64 --headless -- --selftest`。
+1. `RESULT: 136 checks, 0 failed`；导出包内再跑一次 `./build/linux/EscapeGravity.x86_64 --headless -- --selftest`。
 2. 用导出包重新生成截图；桌面 11 张 + 移动端 20:9 一张，检查标题居中、触屏按钮不重叠。
 3. 无运行时绘制审计（应只有 `RenderingServer.frame_post_draw` 一条命中）：
    ```bash

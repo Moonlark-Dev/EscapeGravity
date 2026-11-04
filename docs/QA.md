@@ -11,17 +11,17 @@
 godot --headless --path . -- --selftest
 ```
 
-完整输出：`docs/selftest_output.txt`（138 项断言 + 机器人明细）。
+完整输出：`docs/selftest_output.txt`（136 项断言 + 机器人明细）。
 
 ```
-RESULT: 138 checks, 0 failed
+RESULT: 136 checks, 0 failed
 ```
 
 **导出包内自测**（同一套脚本，从内嵌 PCK 运行）：
 
 ```bash
 ./build/linux/EscapeGravity.x86_64 --headless -- --selftest
-# RESULT: 138 checks, 0 failed
+# RESULT: 136 checks, 0 failed
 ```
 
 覆盖面：
@@ -32,8 +32,8 @@ RESULT: 138 checks, 0 failed
 - 引力：表面 285、内圈 395、3R 截止、辅助操作装置平衡恒星引力、锁定中的导弹仍受引力弯折（0.6×）
 - 导弹：速度/转向率/5s 脱锁/半径、命中 25、过载 2.5s、两发摧毁 50 血炮塔
 - 陨石：0.5 磨损、撞飞后对敌 5、受飞船引力
-- 物质：大 3 XP、超 190 不吸、150 内被吸、高速侧掠被甩飞且进入冷却、正面高速接近仍会吸收、20 XP/级
-- 区域：安全区进入前 R78、扩张瞬间 R280（贴图仍在缩小状态）、补满/清弹/隐藏/离开 10s 刷新；高速切线掠过被引力甩出、径向高速进入仍能停靠；商店 3 件且不回燃料
+- 物质：大 3 XP、超 240 不吸、150 内被吸、高速远离仍被追上吸收、20 XP/级
+- 区域：安全区进入前 R78、扩张瞬间 R280（贴图仍在缩小状态）、补满/清弹/隐藏/离开 10s 刷新；高速切线掠过仍被吸入停靠、径向高速进入也能停靠；商店 3 件且不回燃料
 - 出生区：开局无安全区、首个敌人已生成；击毁首个敌人后解锁并跳过出生侧安全区节点
 - 商店绑定：所属敌人被击败后不立即刷新；连续击毁下一个敌人后自动重定位并绑定新深度
 - 发现：敌人未进屏前不可见、不进雷达/方位/血条、仇恨范围外不开火；玩家进入 2100px 后主动逼近并持续开火；未发现时导弹从屏幕外生成、以切线弧线切入、方向 72% 偏向敌人 ±57°，偷袭弹单独上限 2 且不占直射名额；进屏同一帧 `discovered` 并淡入
@@ -76,7 +76,7 @@ xvfb-run -a -s "-screen 0 1280x720x24" \
 
 - 退出码 0；11 张截图全部生成（**由导出包运行产生，不是编辑器**），已复制到 `docs/shots/`。
 - 标题、中文字体、贴图、音频、脚本均从内嵌 PCK 加载；无缺失贴图警告。
-- `build/linux/EscapeGravity.x86_64` = 96,354,992 bytes，ELF x86-64。
+- `build/linux/EscapeGravity.x86_64` = 96,353,296 bytes，ELF x86-64。
 - 触屏 20:9 截图另用 `--resolution 2400x1080 -- --touch --shots=...` 生成，取 `04_battle` 作为 `docs/shots/12_touch.png`。
 
 ### 2.2 Windows
@@ -87,7 +87,7 @@ file build/windows/EscapeGravity.exe
 python3 -c "d=open(...).read(); print(b'GDPC' in d[-4096:])"   # True
 ```
 
-- 单文件、内嵌 PCK，无外部依赖；132,039,040 bytes。
+- 单文件、内嵌 PCK，无外部依赖；132,037,344 bytes。
 - 未做商业代码签名（没有证书），首次运行会有 SmartScreen 提示。
 
 ### 2.3 Android
@@ -98,7 +98,7 @@ apksigner verify --verbose --print-certs build/android/EscapeGravity.apk
 ```
 
 ```
-package: name='com.escapegravity.game' versionCode='8' versionName='1.0.6'
+package: name='com.escapegravity.game' versionCode='9' versionName='1.0.6'
 minSdkVersion:'24'
 targetSdkVersion:'36'
 native-code: 'arm64-v8a'
@@ -111,16 +111,16 @@ Signer #1 certificate DN: CN=Escape Gravity, OU=Games, O=Escape Gravity, L=Shang
 Signer #1 certificate SHA-256: ddd8a610132d862301c8987f18f545a6eefdf58f0617547d7fad3cec0113f5ff
 ```
 
-- APK：49,566,968 bytes；含全部 `assets/`（贴图、字体、WAV、脚本 `.gdc`、场景）。
+- APK：49,562,872 bytes；含全部 `assets/`（贴图、字体、WAV、脚本 `.gdc`、场景）。
 - 权限：无危险权限（只有 Godot/模板默认项）。
 - 未在真机运行（本机无 Android 设备）；静态检查 + 签名验证通过，Linux 导出包已验证同一 PCK 的运行时行为。
 
 ### 2.4 OpenList 分发
 
 - 已上传 `dist/EscapeGravity-1.0.6-android-arm64.apk` 到 NAS 的 `/vol1/1000/MyFiles/Public/`。
-- 远端大小 49,566,968 bytes、SHA-256 `60f12696…3972e8fa`，与本地一致。
-- 直链 HEAD 返回 `200 application/vnd.android.package-archive`，`content-length=49566968`：
-  <https://files.thisisxd.top/d/EscapeGravity-1.0.6-android-arm64.apk>
+- 远端大小 49,562,872 bytes、SHA-256 `41235128…a54c7637`，与本地一致。
+- 直链 HEAD 返回 `200 application/vnd.android.package-archive`，`content-length=49562872`：
+  <https://files.thisisxd.top/d/EscapeGravity-1.0.6-android-arm64.apk?v=9>
 
 ---
 

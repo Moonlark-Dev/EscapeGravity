@@ -44,11 +44,9 @@ PASS  视野外导弹仍从侧方 820px 进入   d=820
 PASS  陨石磨损护盾 0.5   shield=19.50
 PASS  被玩家撞飞的陨石对敌人 5 伤害   hp=45.0
 PASS  大物质 3 XP / 自动吸取   xp=3
-PASS  190 吸取半径：300 外不吸引   d0=300 d1=300
-PASS  190 吸取半径：150 内被吸引   n0=150 n1=118
-PASS  高速侧掠物质会被甩飞而不是吸收   flung=0.47 moved=57 collected=false
-PASS  物质甩飞进入冷却   flung=2 cd=1.02
-PASS  正面高速接近仍会吸收物质   collected=true
+PASS  240 吸取半径：300 外不吸引   d0=300 d1=300
+PASS  240 吸取半径：150 内被吸引   n0=150 n1=82
+PASS  高速远离时物质仍会被追上吸收   collected=true
 PASS  每 20 XP 升级
 PASS  安全区进入前只比飞船大一点   r=78
 PASS  安全区贴图初始缩小   scale=0.28
@@ -58,10 +56,10 @@ PASS  进入安全区补满燃料
 PASS  进入安全区清除导弹
 PASS  进入安全区隐藏威胁信息
 PASS  离开安全区后消失并在 10s 后刷新
-PASS  高速进入安全区会被辅助装置刹停   v=11.2 d=86 hidden=true
+PASS  高速进入安全区会被辅助装置刹停   v=11.9 d=85 hidden=true
 PASS  商店打开 3 件商品且不回燃料
 PASS  关闭商店回到游戏
-PASS  高速切线掠过安全区会被引力甩出   v=385 d=863 entered=false
+PASS  高速切线掠过安全区仍会被吸入   v=12 d=34 entered=true
 PASS  物品栏基础 2 格
 PASS  满栏时销毁后可放入新道具   ["repair", "flare"]
 PASS  5 格上限后不再提供物品栏卡
@@ -145,4 +143,4 @@ PASS  解锁后的安全区出现在前方路线节点
   bot seed=302 orbit=880 invuln=true -> hp=0 hits=2 t=11.4s state=0 dmg=
 PASS  无敌机器人能靠诱导击毁炮塔（验证核心循环）   invuln kills 3/3
 PASS  普通机器人也能至少击毁一次炮塔   normal kills 1/3
-RESULT: 138 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 21.5333333333334, "state": 4 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 56.6166666666647, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 0, "time": 8.48333333333333, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 22.8666666666666, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 10.9000000000001, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": true, "hits": 2, "time": 11.3833333333335, "state": 0 }], "invuln_kills": 3, "normal_kills": 1 })
+RESULT: 136 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 21.5333333333334, "state": 4 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 56.6166666666647, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 0, "time": 8.48333333333333, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 22.8666666666666, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 10.9000000000001, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": true, "hits": 2, "time": 11.3833333333335, "state": 0 }], "invuln_kills": 3, "normal_kills": 1 })
