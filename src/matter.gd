@@ -1,10 +1,8 @@
 class_name Matter
 extends Node2D
-## XP motes. Attracted within 190 px; small = 1 XP, big = 3 XP.
-##
-## The tractor is deliberately stronger and faster than the ship so a mote is
-## always drawn in, even after a gravity-assisted pass.  It is never
-## intentionally flung away.
+## XP motes.  Once a mote enters the tractor radius it is locked on and pulled
+## in at a speed above the ship's hard speed cap, so a fast pass cannot leave
+## it behind ("flung away").  Small = 1 XP, big = 3 XP.
 
 var run
 var big := false
@@ -42,14 +40,19 @@ func step(delta: float) -> void:
 	if dist < run.absorb_radius:
 		_tractor_lock = EG.MATTER_TRACTOR_LOCK
 	if dist < run.absorb_radius or _tractor_lock > 0.0:
-		var pull: float = lerpf(EG.MATTER_TRACTOR_PULL_NEAR, EG.MATTER_TRACTOR_PULL_FAR,
-			clampf(dist / run.absorb_radius, 0.0, 1.0))
-		vel += d.normalized() * pull * delta
-		vel = vel.limit_length(EG.MATTER_TRACTOR_SPEED)
-		position += vel * delta
+		# 磁吸式捕获：直接以高于飞船硬上限的速度追向飞船，而不是只给
+		# 一个加速度。这样即使玩家 720 px/s 侧掠/远离，物质也会追上。
+		if dist > 0.001:
+			var step_len: float = minf(dist, EG.MATTER_TRACTOR_SPEED * delta)
+			position += d / dist * step_len
+			vel = d / dist * EG.MATTER_TRACTOR_SPEED
 		if dist < EG.MATTER_COLLECT_RADIUS:
 			collect()
 			return
+		_sprite.rotation += delta * 4.0
+		_glow.modulate.a = 0.9
+		_sprite.modulate.a = 1.0
+		return
 	position.y += sin(_t * 2.4 + _phase) * 3.0 * delta
 	_sprite.rotation += delta * 0.8
 	var a: float = 0.55 + 0.25 * sin(_t * 5.0 + _phase)

@@ -9,8 +9,6 @@ extends RefCounted
 ##   * turns less than 90 degrees from the previous leg (never doubles back),
 ##   * keeps moving along the initial forward axis (route order is meaningful),
 ##   * has a planet anchor near its middle so the route passes a gravity well,
-##     and some legs put that anchor directly in the blank path between the two
-##     enemies as a slingshot instead of off to the side,
 ##   * has one safe zone midway between the previous and the next enemy, clear
 ##     of both sprites,
 ##   * has a shop further away from the line than that safe zone.
@@ -42,11 +40,9 @@ const BODY_OFFSET_MIN := 380.0         # inside the anchor planet's 3R influence
 const BODY_OFFSET_MAX := 480.0
 const BODY_RADIUS_MIN := 260.0
 const BODY_RADIUS_MAX := 340.0
-## Some legs put their gravity anchor directly in the blank path between the
-## two enemies, so a straight run can be turned into a slingshot.  The body is
-## smaller than a normal anchor and only takes the slot when it clears the safe
-## zone, shop and both enemy hulls; otherwise the leg falls back to the side
-## anchor above.
+## 部分路线段会把引力锚点直接放进两个敌人之间的空白路径，形成“直线冲
+## 进去、被行星带弯”的加速天体。它比侧方锚点小，只有避开安全区、商店、
+## 两侧敌人和已生成路线天体时才采用；否则回退到侧方锚点。
 const PATH_BODY_CHANCE := 0.42
 const PATH_BODY_T_MIN := 0.56
 const PATH_BODY_T_MAX := 0.78
@@ -115,11 +111,9 @@ func _append_leg() -> void:
 	_last_pos = enemy
 	_last_dir = dir
 
-## The single gravity anchor for a leg.  Most legs keep the doc's side anchor
-## (opposite the safe zone, 380~480 px off the line); some try to place a
-## smaller body right in the blank path between the enemies.  The path body is
-## only accepted when it clears both enemies, the safe zone, the shop and every
-## previously planned route body, so it never crowds another planned node.
+## 一段路线只有一个引力锚点。多数段沿用侧方锚点（与安全区相反、离线
+## 380~480px）；部分段尝试把更小的天体放进两敌之间的空白路径，只有
+## 避开两侧敌人、安全区、商店和已规划天体时才采用。
 func _make_route_body(prev: Vector2, dir: Vector2, leg: float, perp: Vector2,
 		safe: Vector2, shop: Vector2, enemy: Vector2) -> Dictionary:
 	if rng.randf() < PATH_BODY_CHANCE:
@@ -142,6 +136,8 @@ func _body_dict(p: Vector2, r: float, path: bool) -> Dictionary:
 		"path": path,
 	}
 
+## 加速天体不能挤到任何已规划节点上：安全区/商店按完整 R280 留白，
+## 敌人按炮塔外壳，路线天体之间再留 BODY_PAD。
 func _route_body_clear(p: Vector2, r: float, safe: Vector2, shop: Vector2,
 		prev: Vector2, enemy: Vector2) -> bool:
 	var zone_need: float = EG.ZONE_RADIUS + r + EG.BODY_CONTENT_MARGIN

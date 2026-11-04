@@ -33,6 +33,9 @@ var current_enemy: Enemy = null
 var shop_open := false
 var shop_inside := false
 var shop_stock: Array = []
+## 商店在线路中的相对位置：所在路线段（0 起）以及该段敌人的深度。
+## 玩家没进商店、却先击败了该段敌人时，商店已经落到身后，需要随战线重定位。
+var shop_route_leg := -1
 var shop_bound_depth := 0
 
 var depth := 1
@@ -123,43 +126,16 @@ func _initial_spawn() -> void:
 	scatter_matter(150, ship.position, 380.0, 2900.0, true)
 	# Step 3: build the hidden route, then materialise its first nodes.
 	route = galaxy.build_route(Vector2.ZERO)
-	# The opening always has a safe zone: a run should start with a visible
-	# supply destination instead of making the player hunt for one after the
-	# first kill.  The zone stays put until the player enters it.
-	var safe_pos := _opening_safe_point()
+	var safe_pos := _next_route_safe()
 	safe_zone = make_zone("safe", _place_zone_point(safe_pos))
-	safe_respawn_timer = 0.0
-	# Spawn the attacker first: the shop is the node that yields when the route
-	# happens to place it close to the enemy, so enemy 1 keeps its planned band.
-	spawn_enemy()
 	var shop_pos := _next_route_shop()
 	shop_zone = make_zone("shop", _place_zone_point(shop_pos))
+	shop_route_leg = route.next_shop - 1
 	shop_bound_depth = depth
+	spawn_enemy()
 	if hud != null:
-		hud.toast("引力捕获完成 · 安全区已标记", EG.C_CYAN, 2.6)
-		hud.emphasize_radar()
+		hud.toast("引力捕获完成 · 深度 1", EG.C_CYAN, 2.6)
 		tutorial_timer = 2.0
-
-## The first safe zone uses the route's opening node, but a body relocation or
-## an unlucky seed can drop it within the assist radius (700px) of the ship,
-## which would tug the player in before they can steer.  Keep the opening zone
-## at least 640px away; if the planned node is too close, pick a forward point.
-func _opening_safe_point() -> Vector2:
-	var clear := EG.ZONE_RADIUS + EG.BODY_CONTENT_MARGIN
-	var p := _next_route_safe()
-	if p.distance_to(ship.position) >= 640.0 and not galaxy.is_inside_any_body(p, clear):
-		return p
-	# Body relocation or an unlucky seed can put the planned node on the ship.
-	# Scan rings around the ship instead of letting _clear_body_point fall back
-	# towards the start; every candidate is 900px+ away by construction.
-	for ring in range(3):
-		var base := 950.0 + 480.0 * float(ring)
-		for i in range(24):
-			var ang := route.forward.angle() + TAU * float(i) / 24.0 + float(ring) * 0.13
-			var q := ship.position + Vector2.RIGHT.rotated(ang) * (base + 300.0 * (0.5 + 0.5 * sin(float(i))))
-			if not galaxy.is_inside_any_body(q, clear):
-				return q
-	return ship.position + route.forward * 1600.0
 
 # ---------------------------------------------------------------- nodes
 
@@ -370,11 +346,12 @@ func gravity_at(pos: Vector2) -> Vector2:
 	return galaxy.gravity_at(pos, false)
 
 func gravity_ship_at(pos: Vector2) -> Vector2:
-	# A safe zone is a station-keeping pocket: its assist cancels the local
-	# body gravity so a docked ship cannot be dragged out of the ring, even if
-	# the zone sits near a 3R well. Missiles never get this protection.
-	if safe_zone != null and safe_zone.active and safe_zone.inside(pos):
-		return Vector2.ZERO
+	# 安全区是驻留口袋：整个影响圈（而不只是圈内）都平衡局部天体引力，
+	# 否则靠近恒星的进站路线会被恒星引力甩出去。导弹没有这套保护。
+	if safe_zone != null and safe_zone.active:
+		var influence: float = safe_zone.clearance_radius() + EG.ZONE_INFLUENCE_EXTRA
+		if safe_zone.position.distance_to(pos) < influence:
+			return Vector2.ZERO
 	return galaxy.gravity_at(pos, true)
 
 func screen_rect() -> Rect2:
@@ -454,27 +431,6 @@ func _next_enemy_position(e: Enemy) -> Vector2:
 		galaxy.apply_route_bodies()
 	var clear: float = e.radius + EG.BODY_CONTENT_MARGIN
 	var p := _clear_body_point(cursor, clear)
-	# The route reserves 1150px between a safe zone and its neighbours while the
-	# spawn check asks for the full ZONE_ENEMY_CLEAR (1220); a relocated shop can
-	# also end up close.  Slide the attacker out along the zone ray by the small
-	# deficit; the generic ring search would otherwise throw it ~900px off the
-	# planned leg.
-	for _i in range(3):
-		var zone: Zone = null
-		var need := 0.0
-		if safe_zone != null and safe_zone.active:
-			need = safe_zone.clearance_radius() + e.radius + EG.ZONE_ENEMY_CLEAR
-			if p.distance_to(safe_zone.position) < need:
-				zone = safe_zone
-		if zone == null and shop_zone != null and shop_zone.active:
-			need = shop_zone.radius + e.radius + EG.ZONE_ENEMY_CLEAR
-			if p.distance_to(shop_zone.position) < need:
-				zone = shop_zone
-		if zone == null:
-			break
-		var d: float = p.distance_to(zone.position)
-		var away: Vector2 = (p - zone.position) / d if d > 1.0 else route.forward
-		p = _clear_body_point(zone.position + away * need, clear)
 	if not _enemy_spawn_blocked(p, e):
 		return p
 	# The route point is normally clear; if a streamed star system landed on
@@ -589,14 +545,11 @@ func _update_spawns(delta: float) -> void:
 
 func _spawn_safe_respawn() -> void:
 	var p := _next_route_safe()
-	# A fast run can blow through a whole leg before the 10 s timer elapses, so
-	# the pre-generated node may sit far behind the ship or beyond fuel range.
-	# In that case drop a fresh zone ahead of travel; a beacon nobody can find
-	# is worse than one that is not on the route.
-	var dir := _travel_direction()
-	if p == Vector2.ZERO or p.distance_to(ship.position) > EG.SAFE_FUEL_DIST \
-			or (p - ship.position).dot(dir) < -300.0:
-		p = _safe_point_ahead(dir)
+	var clear := EG.ZONE_RADIUS + EG.BODY_CONTENT_MARGIN
+	if p == Vector2.ZERO:
+		p = galaxy.find_unexplored_point(ship.position, 700.0, EG.SAFE_FUEL_DIST, clear)
+	if p == Vector2.ZERO:
+		p = ship.position + galaxy.nearest_unexplored_direction(ship.position) * 1200.0
 	p = _place_zone_point(p)
 	safe_zone = make_zone("safe", p)
 	player_hidden = false
@@ -604,27 +557,6 @@ func _spawn_safe_respawn() -> void:
 		hud.toast("安全区信号已同步", EG.C_MINT, 2.2)
 		hud.emphasize_radar()
 	Audio.play("sfx_safezone", -6.0)
-
-## Direction the player is actually travelling; falls back to the ship's nose
-## and then to the route axis when the ship is drifting / stopped.
-func _travel_direction() -> Vector2:
-	if ship != null and ship.vel.length() > 40.0:
-		return ship.vel.normalized()
-	if ship != null:
-		return Vector2.RIGHT.rotated(ship.facing)
-	if route != null:
-		return route.forward
-	return Vector2.RIGHT
-
-## Fresh safe-zone point within fuel range and inside a forward cone.
-func _safe_point_ahead(dir: Vector2) -> Vector2:
-	var clear := EG.ZONE_RADIUS + EG.BODY_CONTENT_MARGIN
-	for i in range(24):
-		var q := ship.position + dir.rotated(rng.randf_range(-0.5, 0.5)) \
-			* rng.randf_range(900.0, EG.SAFE_FUEL_DIST - 120.0)
-		if not galaxy.is_inside_any_body(q, clear):
-			return q
-	return _clear_body_point(ship.position + dir * 1200.0, clear)
 
 ## The route point can land where the current fight is happening, or on a
 ## celestial body.  Push it away from live attackers/other zones, then out of
@@ -671,6 +603,7 @@ func _spawn_shop_respawn() -> void:
 		p = ship.position + galaxy.nearest_unexplored_direction(ship.position) * 3600.0
 	p = _place_zone_point(p)
 	shop_zone = make_zone("shop", p)
+	shop_route_leg = route.next_shop - 1 if route != null else -1
 	shop_bound_depth = depth
 	shop_open = false
 	shop_inside = false
@@ -697,9 +630,8 @@ func _next_route_shop() -> Vector2:
 		galaxy.apply_route_bodies()
 	return _clear_body_point(p, EG.ZONE_RADIUS + EG.BODY_CONTENT_MARGIN)
 
-## The shop's route point should belong to the leg the player is actually on.
-## If an old beacon is refreshed after a rush, the unconsumed cursor can lag a
-## leg behind; skip forward to the current leg before taking the point.
+## 商店刷新时如果玩家已经冲到前面，路线游标不能还停在后一段。把游标
+## 至少推到“当前这一战”的路线段，保证新商店出现在玩家前方而不是身后。
 func _next_route_shop_for_progress() -> Vector2:
 	if route == null:
 		return Vector2.ZERO
@@ -897,15 +829,15 @@ func kill_enemy(e: Enemy) -> void:
 		hud.set_safe_countdown(EG.DEPTH_SAFE_TIME)
 	Audio.play("sfx_upgrade", -6.0)
 
-## A shop belongs to the enemy depth at which it was rolled.  If the player
-## skips it and tears through that enemy plus the next one, the beacon is
-## relocated to the next route shop node instead of being stranded behind.
+## 商店绑定它所在路线段的敌人。玩家没使用商店、却先击败了这个敌人，
+## 说明信标已经落在身后：移除旧信标，在下一段路线商店点重新生成。
 func _maybe_refresh_shop() -> void:
 	if shop_zone == null or not is_instance_valid(shop_zone) or not shop_zone.active:
 		return
 	if shop_inside or state == State.SHOP:
 		return
-	if depth <= shop_bound_depth + 1:
+	var leg := shop_route_leg if shop_route_leg >= 0 else shop_bound_depth - 1
+	if leg < 0 or depth <= leg + 1:
 		return
 	var old := shop_zone
 	shop_zone = null
@@ -1465,7 +1397,7 @@ func _check_fuel(delta: float) -> void:
 func assist_accel(s: PlayerShip, delta: float = 0.0) -> Vector2:
 	var acc := Vector2.ZERO
 	var input := _read_dir()
-	if player_hidden or (safe_zone != null and safe_zone.active and safe_zone.inside(s.position)):
+	if player_hidden or (safe_zone != null and safe_zone.inside(s.position)):
 		# 高速进站：安全区扩张到 R280 后，辅助装置用足够强的反推把飞船
 		# 停在圈内，而不是让它在 0.4 秒里穿过去。默认一直刹车；只有玩家
 		# 明确把推进方向指向圈外时才放手，避免把玩家困在安全区里。
@@ -1480,27 +1412,22 @@ func assist_accel(s: PlayerShip, delta: float = 0.0) -> Vector2:
 				acc += -s.vel.normalized() * minf(EG.SHIP_SAFE_BRAKE, s.vel.length() * 6.0)
 				assist_active = true
 		return acc
-	if safe_zone != null and safe_zone.active \
-			and safe_zone.position.distance_to(s.position) < safe_zone.clearance_radius() + 420.0:
-		var zone_d: float = s.position.distance_to(safe_zone.position)
-		if zone_d > 1.0:
-			var zone_radial: Vector2 = (s.position - safe_zone.position).normalized()
-			var to_center: Vector2 = -zone_radial
+	if safe_zone != null and safe_zone.active:
+		var z: Zone = safe_zone
+		var to_center: Vector2 = z.position - s.position
+		var dist: float = to_center.length()
+		if dist > 1.0 and dist < z.clearance_radius() + EG.ZONE_INFLUENCE_EXTRA:
 			var leaving := false
 			if input.length() > 0.1:
-				leaving = input.normalized().dot(to_center) < -0.35
+				leaving = input.normalized().dot(to_center.normalized()) < -0.35
 			if not leaving:
-				# 持续向心牵引，而不是只有“无输入”时才生效；玩家高速滑过
-				# 或正在转向时，安全区仍然会把他往圈里拉。
-				acc += to_center * EG.ZONE_GRAVITY
-				# 只制动“向外”的径向速度，避免把向心速度也抵消掉；再对
-				# 切向速度做阻尼，高速掠过会先被拖慢再被拉进圈内。
-				var outward: float = s.vel.dot(zone_radial)
-				if outward > 12.0:
-					acc -= zone_radial * minf(EG.SHIP_SAFE_BRAKE, outward * 6.0)
-				var tangential: Vector2 = s.vel - zone_radial * s.vel.dot(zone_radial)
-				if tangential.length() > 6.0:
-					acc -= tangential.normalized() * minf(EG.SHIP_SAFE_BRAKE * 0.5, tangential.length() * 2.0)
+				# 捕获井：把速度朝“指向圆心的目标速度”拉，而不是只加一个
+				# 很小的向心加速度。目标速度随距离收缩，增益和加速度上限
+				# 足够压掉切向速度，高速掠过也会被带回圈内。
+				var desired_speed: float = minf(EG.ZONE_CAPTURE_SPEED, dist * 2.0)
+				var desired: Vector2 = to_center / dist * desired_speed
+				var steer: Vector2 = (desired - s.vel) * EG.ZONE_CAPTURE_GAIN
+				acc += steer.limit_length(EG.ZONE_CAPTURE_ACCEL)
 				assist_active = true
 	for b in galaxy.bodies:
 		var surface: float = s.position.distance_to(b.position) - b.radius
@@ -1576,7 +1503,7 @@ func _alarm_tick(delta: float) -> void:
 func _tutorial_step(delta: float) -> void:
 	if test_mode:
 		return
-	if Store.hints_done or tutorial_index > 7:
+	if Store.hints_done or tutorial_index > 6:
 		return
 	tutorial_timer += delta
 	var texts := [
@@ -1587,7 +1514,6 @@ func _tutorial_step(delta: float) -> void:
 		[34.0, "贴近行星时辅助装置会自动绕行加速，离开引力圈后速度保留", EG.C_CYAN],
 		[42.0, "炮塔外壳会伤害你，但它也是导弹唯一能撞的东西", EG.C_VIOLET],
 		[50.0, "辅助操作装置会平衡恒星引力；导弹没有这套装置，始终被引力弯折", EG.C_CYAN],
-		[58.0, "安全区会持续牵引并制动；物质靠近即吸收，高速经过也不会被甩开", EG.C_MAGENTA],
 	]
 	if Store.touch_mode:
 		texts = [
@@ -1598,7 +1524,6 @@ func _tutorial_step(delta: float) -> void:
 			[34.0, "贴近行星时辅助装置会自动绕行加速，离开引力圈后速度保留", EG.C_CYAN],
 			[42.0, "炮塔外壳会伤害你，但它也是导弹唯一能撞的东西", EG.C_VIOLET],
 			[50.0, "辅助操作装置会平衡恒星引力；导弹没有这套装置，始终被引力弯折", EG.C_CYAN],
-			[58.0, "安全区会持续牵引并制动；物质靠近即吸收，高速经过也不会被甩开", EG.C_MAGENTA],
 		]
 	if tutorial_index < texts.size() and tutorial_timer >= float(texts[tutorial_index][0]):
 		if hud != null:

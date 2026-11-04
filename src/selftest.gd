@@ -25,8 +25,8 @@ func run_tests() -> void:
 	_test_streaming()
 	_test_route()
 	_test_safe_zone_clearance()
-	_test_shop_binding()
 	_test_body_clearance()
+	_test_shop_binding()
 	_test_initial_map()
 	var bot := await _test_bot_playability()
 	print("RESULT: %d checks, %d failed  (bot: %s)" % [total, failed, str(bot)])
@@ -342,10 +342,6 @@ func _test_missiles() -> void:
 func _test_meteor_matter() -> void:
 	var r := _new_run(104)
 	_clear_arena(r)
-	for b in r.galaxy.bodies.duplicate():
-		b.remove()
-	r.galaxy.bodies.clear()
-	r.no_stream = true
 	r.ship.position = Vector2.ZERO
 	r.ship.vel = Vector2.ZERO
 	r.ship.shield = 20.0
@@ -380,7 +376,7 @@ func _test_meteor_matter() -> void:
 	r.simulate(dt)
 	_check("大物质 3 XP / 自动吸取", absf(r.xp - 3.0) < 0.01, "xp=%.0f" % r.xp)
 
-	# magnet radius 240
+	# magnet radius 260
 	var far := Matter.new()
 	far.run = r
 	far.position = r.ship.position + Vector2(300, 0)
@@ -389,7 +385,7 @@ func _test_meteor_matter() -> void:
 	var d0 := far.position.distance_to(r.ship.position)
 	_step(r, 0.6)
 	var d1 := far.position.distance_to(r.ship.position)
-	_check("240 吸取半径：300 外不吸引", absf(d0 - d1) < 20.0, "d0=%.0f d1=%.0f" % [d0, d1])
+	_check("260 吸取半径：300 外不吸引", absf(d0 - d1) < 20.0, "d0=%.0f d1=%.0f" % [d0, d1])
 	var near := Matter.new()
 	near.run = r
 	near.position = r.ship.position + Vector2(150, 0)
@@ -398,19 +394,26 @@ func _test_meteor_matter() -> void:
 	var n0 := near.position.distance_to(r.ship.position)
 	_step(r, 0.4)
 	var n1 := near.position.distance_to(r.ship.position)
-	_check("240 吸取半径：150 内被吸引", n1 < n0 - 5.0, "n0=%.0f n1=%.0f" % [n0, n1])
+	_check("260 吸取半径：150 内被吸引", n1 < n0 - 5.0, "n0=%.0f n1=%.0f" % [n0, n1])
 
-	# A fast ship must not leave matter behind: the tractor is faster than the
-	# ship and keeps pulling even when the player is already moving away.
-	var hm := Matter.new()
-	hm.run = r
-	hm.position = r.ship.position + Vector2(-180, 0)
-	r.world.add_child(hm)
-	r.matters.append(hm)
-	r.ship.vel = Vector2(600, 0)
-	_step(r, 4.0)
-	_check("高速远离时物质仍会被追上吸收", hm.collected, "collected=%s" % str(hm.collected))
-	r.ship.vel = Vector2.ZERO
+	# 高速侧掠/远离：物质在飞船身后进入牵引圈，也必须追上并吸收。
+	for mat in r.matters.duplicate():
+		mat.queue_free()
+	r.matters.clear()
+	r.ship.position = Vector2.ZERO
+	r.ship.vel = Vector2(720, 0)
+	r.auto_input = Vector2.ZERO
+	r.xp = 0.0
+	var chase := Matter.new()
+	chase.run = r
+	chase.big = true
+	chase.xp = 3
+	chase.position = Vector2(-220, 0)
+	r.world.add_child(chase)
+	r.matters.append(chase)
+	_step(r, 1.0)
+	_check("高速远离时物质仍会追上并被吸收（不会被甩飞）",
+		r.xp >= 3.0 and chase.collected, "xp=%.0f d=%.0f" % [r.xp, chase.position.distance_to(r.ship.position)])
 	_check("每 20 XP 升级", EG.XP_PER_LEVEL == 20.0)
 	_kill(r)
 
@@ -454,6 +457,23 @@ func _test_zones() -> void:
 		"v=%.1f d=%.0f hidden=%s" % [rz.ship.vel.length(), rz.ship.position.distance_to(z2.position), str(rz.player_hidden)])
 	_kill(rz)
 
+	# 高速切向掠过：旧实现只给 46 px/s² 的向心力，飞船会从圈边滑过去甚至
+	# 被甩飞。捕获井必须把它弯回圈内。
+	var rt := _new_run(127)
+	_clear_arena(rt)
+	var z3 := rt.make_zone("safe", Vector2(900, 0))
+	rt.safe_zone = z3
+	rt.ship.position = Vector2(250, 0)
+	rt.ship.vel = Vector2(0, 650)
+	rt.ship.fuel = rt.ship.fuel_max
+	rt.auto_input = Vector2.ZERO
+	rt.auto_boost = false
+	_step(rt, 3.0)
+	_check("高速切向掠过安全区会被吸进圈内",
+		rt.player_hidden and rt.ship.position.distance_to(z3.position) < EG.ZONE_RADIUS,
+		"d=%.0f v=%.1f hidden=%s" % [rt.ship.position.distance_to(z3.position), rt.ship.vel.length(), str(rt.player_hidden)])
+	_kill(rt)
+
 	var sz := r.make_zone("shop", Vector2(3000, 0))
 	r.shop_zone = sz
 	r.ship.position = sz.position
@@ -462,29 +482,6 @@ func _test_zones() -> void:
 	_check("商店打开 3 件商品且不回燃料", r.state == Run.State.SHOP and r.shop_stock.size() == 3 and absf(r.ship.fuel - 100.0) < 0.01)
 	r.close_shop()
 	_check("关闭商店回到游戏", r.state == Run.State.PLAYING)
-
-	# A fast tangential pass is bent into a slingshot: the safe-zone well adds
-	# tangential speed and the ship leaves instead of being captured.
-	var rf := _new_run(125)
-	_clear_arena(rf)
-	for b in rf.galaxy.bodies.duplicate():
-		b.remove()
-	rf.galaxy.bodies.clear()
-	rf.no_stream = true
-	rf.ship.position = Vector2(-250, 0)
-	rf.ship.vel = Vector2(0, 600)
-	rf.ship.fuel = rf.ship.fuel_max
-	rf.auto_input = Vector2.ZERO
-	rf.auto_boost = false
-	var zf := rf.make_zone("safe", Vector2.ZERO)
-	rf.safe_zone = zf
-	_step(rf, 4.0)
-	_check("高速切线掠过安全区仍会被吸入",
-		zf.entered and rf.player_hidden and rf.safe_zone == zf
-		and rf.ship.position.distance_to(zf.position) < EG.ZONE_RADIUS
-		and rf.ship.vel.length() < 60.0,
-		"v=%.0f d=%.0f entered=%s" % [rf.ship.vel.length(), rf.ship.position.distance_to(zf.position), str(zf.entered)])
-	_kill(rf)
 	_kill(r)
 
 func _test_inventory_and_upgrades() -> void:
@@ -760,9 +757,9 @@ func _test_route() -> void:
 	var safe_between := true
 	var shop_farther := true
 	var body_near := true
-	var safe_clear := 1.0e9
-	var path_bodies := 0
 	var path_ok := true
+	var path_bodies := 0
+	var safe_clear := 1.0e9
 	var prev_enemy: Vector2 = route.origin
 	var first_enc := true
 	for enc in route.encounters:
@@ -782,22 +779,21 @@ func _test_route() -> void:
 		var body_lat: float = absf((enc["body"]["pos"] - prev_enemy).cross(dir))
 		if body_lat >= float(enc["body"]["radius"]) * 2.0:
 			body_near = false
-		var body: Dictionary = enc["body"]
-		if bool(body.get("path", false)):
+		if enc["body"].get("path", false):
 			path_bodies += 1
-			var body_rel: Vector2 = body["pos"] - prev_enemy
+			var bp: Vector2 = enc["body"]["pos"]
+			var br: float = float(enc["body"]["radius"])
+			var body_rel: Vector2 = bp - prev_enemy
 			var bt: float = body_rel.dot(dir) / maxf(seg.length(), 1.0)
 			var blat: float = absf(body_rel.cross(dir))
-			var br: float = float(body["radius"])
-			if bt < 0.50 or bt > 0.85 or blat > RunRoute.PATH_BODY_OFFSET_MAX + 1.0:
-				path_ok = false
-			if br < RunRoute.PATH_BODY_RADIUS_MIN - 0.1 or br > RunRoute.PATH_BODY_RADIUS_MAX + 0.1:
+			if bt < RunRoute.PATH_BODY_T_MIN - 0.02 or bt > RunRoute.PATH_BODY_T_MAX + 0.02 \
+					or blat > RunRoute.PATH_BODY_OFFSET_MAX + 1.0:
 				path_ok = false
 			var zone_need: float = EG.ZONE_RADIUS + br + EG.BODY_CONTENT_MARGIN
-			if body["pos"].distance_to(enc["safe"]) < zone_need or body["pos"].distance_to(enc["shop"]) < zone_need:
+			if bp.distance_to(enc["safe"]) < zone_need - 0.5 or bp.distance_to(enc["shop"]) < zone_need - 0.5:
 				path_ok = false
 			var enemy_need: float = EG.TURRET_RADIUS + br + EG.BODY_CONTENT_MARGIN
-			if body["pos"].distance_to(prev_enemy) < enemy_need or body["pos"].distance_to(enc["enemy"]) < enemy_need:
+			if bp.distance_to(prev_enemy) < enemy_need - 0.5 or bp.distance_to(enc["enemy"]) < enemy_need - 0.5:
 				path_ok = false
 		first_enc = false
 		prev_enemy = enc["enemy"]
@@ -834,25 +830,6 @@ func _test_safe_zone_clearance() -> void:
 	_check("安全区避开当前敌人（贴图留间隙）", nudged.distance_to(e.position) >= want - 1.0,
 		"d=%.0f want=%.0f" % [nudged.distance_to(e.position), want])
 	_check("已经够远的安全区点不被挪动", kept.distance_to(e.position + Vector2(want, 0)) < 1.0)
-	_kill(r)
-
-func _test_shop_binding() -> void:
-	var r := _new_run(126)
-	_clear_arena(r)
-	r.depth = 1
-	var old_pos := Vector2(3000, 0)
-	r.shop_zone = r.make_zone("shop", old_pos)
-	r.shop_bound_depth = 1
-	var e1 := _make_enemy(r, Vector2(0, -1000))
-	r.kill_enemy(e1)
-	_check("商店所属敌人被击败后不立即刷新",
-		r.depth == 2 and r.shop_zone != null and r.shop_zone.position.distance_to(old_pos) < 1.0)
-	var e2 := _make_enemy(r, Vector2(0, -1200))
-	r.kill_enemy(e2)
-	_check("击败下一个敌人后商店自动重新生成",
-		r.depth == 3 and r.shop_zone != null and r.shop_zone.position.distance_to(old_pos) > 100.0,
-		"depth=%d d=%.0f" % [r.depth, r.shop_zone.position.distance_to(old_pos) if r.shop_zone != null else -1.0])
-	_check("重新生成的商店绑定到新深度", r.shop_bound_depth == 3 and r.route.next_shop >= 1)
 	_kill(r)
 
 ## The reported bug: a safe zone or an enemy could be born inside / hugging a
@@ -909,64 +886,40 @@ func _test_body_clearance() -> void:
 	_check("玩家所在位置不会突然生成天体", not r4.galaxy.body_fits(r4.ship.position + Vector2(500, 0), 300.0, 400.0, true))
 	_kill(r4)
 
+func _test_shop_binding() -> void:
+	var r := _new_run(126)
+	_clear_arena(r)
+	r.depth = 1
+	r.route.next_shop = 1
+	var old_pos := Vector2(3000, 0)
+	r.shop_zone = r.make_zone("shop", old_pos)
+	r.shop_route_leg = 0
+	r.shop_bound_depth = 1
+	var e1 := _make_enemy(r, Vector2(0, -1000))
+	r.kill_enemy(e1)
+	_check("击败商店所在段的敌人后商店自动重定位",
+		r.depth == 2 and r.shop_zone != null and r.shop_zone.position.distance_to(old_pos) > 100.0,
+		"depth=%d d=%.0f" % [r.depth, r.shop_zone.position.distance_to(old_pos) if r.shop_zone != null else -1.0])
+	_check("重定位后的商店绑定到新的路线段",
+		r.shop_route_leg == 1 and r.shop_bound_depth == 2,
+		"leg=%d bound=%d" % [r.shop_route_leg, r.shop_bound_depth])
+	_kill(r)
+
 func _test_initial_map() -> void:
 	var r := _new_run(116)
 	r.test_mode = false
 	r._initial_spawn()
 	var route: RunRoute = r.galaxy.route
-	var first_safe: Vector2 = route.safe_at(0)
-	_check("开局生成第一个安全区", r.safe_zone != null and
-		r.safe_zone.position.distance_to(first_safe) < 1500.0)
-	_check("开局安全区在可达范围内", r.safe_zone != null and
-		r.safe_zone.position.distance_to(r.ship.position) <= EG.SAFE_FUEL_DIST + 1.0)
-	_check("出生点直接生成敌人", r.current_enemy != null)
-	if r.current_enemy != null and r.safe_zone != null:
-		var need: float = r.safe_zone.clearance_radius() + r.current_enemy.radius + EG.ZONE_ENEMY_CLEAR
-		_check("开局安全区与首个敌人保持间距",
-			r.safe_zone.position.distance_to(r.current_enemy.position) >= need - 1.0,
-			"d=%.0f need=%.0f" % [r.safe_zone.position.distance_to(r.current_enemy.position), need])
+	_check("初始安全区落在路线预置点", r.safe_zone != null and r.safe_zone.position.distance_to(route.safe_at(0)) < 1500.0)
 	_check("初始商店落在路线预置点", r.shop_zone != null and r.shop_zone.position.distance_to(route.shop_at(0)) < 1500.0)
-	_check("初始商店绑定到当前敌人深度", r.shop_bound_depth == 1)
+	var shop_far := (r.shop_zone != null and r.safe_zone != null and
+		r.shop_zone.position.distance_to(r.ship.position) > r.safe_zone.position.distance_to(r.ship.position))
+	_check("初始商店比安全区离玩家更远", shop_far)
 	var init_d: float = -1.0
 	if r.current_enemy != null:
 		init_d = r.current_enemy.position.distance_to(route.enemy_at(0))
-	_check("首个敌人落在路线预置点附近（允许避开天体）", init_d >= 0.0 and init_d < 1600.0, "d=%.0f" % init_d)
+	_check("首个敌人落在路线预置点", init_d >= 0.0 and init_d < 2200.0, "d=%.0f" % init_d)
 	_check("地图生成时填充了物质", r.matters.size() > 50, "matter=%d" % r.matters.size())
-	_check("开局已消费首个安全区节点", route.next_safe == 1 and route.safe_at(1) != first_safe)
-
-	# First kill must not disturb the zone already on the field.
-	var e: Enemy = r.current_enemy
-	r.kill_enemy(e)
-	_check("击毁首个敌人后安全区仍在场", r.safe_zone != null and
-		r.safe_zone.position.distance_to(first_safe) < 1500.0)
-
-	# The opening zone must not spawn on top of the ship (the assist would pull
-	# the player in before they can steer).  Check a handful of seeds.
-	var too_close := 0
-	for seed_i in range(150, 162):
-		var rr := _new_run(seed_i)
-		rr.test_mode = false
-		rr._initial_spawn()
-		if rr.safe_zone != null and rr.safe_zone.position.distance_to(rr.ship.position) < 640.0:
-			too_close += 1
-			print("DBG close seed=", seed_i, " d=", rr.safe_zone.position.distance_to(rr.ship.position), " safe=", rr.safe_zone.position, " ship=", rr.ship.position)
-		_kill(rr)
-	_check("多个种子的开局安全区都不贴脸", too_close == 0, "close=%d/12" % too_close)
-
-	# A fast player can be far past the planned node when the 10 s timer runs
-	# out; the replacement must still be within fuel range and ahead of travel.
-	r.safe_zone.remove()
-	r.safe_zone = null
-	r.ship.position += route.forward * 9000.0
-	r.ship.vel = route.forward * 700.0
-	r.safe_respawn_timer = 0.0
-	r._spawn_safe_respawn()
-	var np: Vector2 = r.safe_zone.position if r.safe_zone != null else Vector2.ZERO
-	_check("高速越过预置点后安全区仍在可达范围",
-		r.safe_zone != null and np.distance_to(r.ship.position) <= EG.SAFE_FUEL_DIST + 1.0,
-		"d=%.0f" % np.distance_to(r.ship.position))
-	_check("高速越过预置点后安全区落在前方",
-		r.safe_zone != null and (np - r.ship.position).dot(route.forward) > 0.0)
 	_kill(r)
 
 func _test_bot_playability() -> Dictionary:

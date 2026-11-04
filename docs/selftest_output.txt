@@ -44,9 +44,9 @@ PASS  视野外导弹仍从侧方 820px 进入   d=820
 PASS  陨石磨损护盾 0.5   shield=19.50
 PASS  被玩家撞飞的陨石对敌人 5 伤害   hp=45.0
 PASS  大物质 3 XP / 自动吸取   xp=3
-PASS  240 吸取半径：300 外不吸引   d0=300 d1=300
-PASS  240 吸取半径：150 内被吸引   n0=150 n1=82
-PASS  高速远离时物质仍会被追上吸收   collected=true
+PASS  260 吸取半径：300 外不吸引   d0=300 d1=300
+PASS  260 吸取半径：150 内被吸引   n0=150 n1=10
+PASS  高速远离时物质仍会追上并被吸收（不会被甩飞）   xp=3 d=420
 PASS  每 20 XP 升级
 PASS  安全区进入前只比飞船大一点   r=78
 PASS  安全区贴图初始缩小   scale=0.28
@@ -56,10 +56,10 @@ PASS  进入安全区补满燃料
 PASS  进入安全区清除导弹
 PASS  进入安全区隐藏威胁信息
 PASS  离开安全区后消失并在 10s 后刷新
-PASS  高速进入安全区会被辅助装置刹停   v=11.9 d=85 hidden=true
+PASS  高速进入安全区会被辅助装置刹停   v=11.6 d=11 hidden=true
+PASS  高速切向掠过安全区会被吸进圈内   d=12 v=11.5 hidden=true
 PASS  商店打开 3 件商品且不回燃料
 PASS  关闭商店回到游戏
-PASS  高速切线掠过安全区仍会被吸入   v=12 d=34 entered=true
 PASS  物品栏基础 2 格
 PASS  满栏时销毁后可放入新道具   ["repair", "flare"]
 PASS  5 格上限后不再提供物品栏卡
@@ -113,9 +113,6 @@ PASS  路线段所在区块保证有天体
 PASS  敌人位置按路线顺序消耗
 PASS  安全区避开当前敌人（贴图留间隙）   d=1220 want=1220
 PASS  已经够远的安全区点不被挪动
-PASS  商店所属敌人被击败后不立即刷新
-PASS  击败下一个敌人后商店自动重新生成   depth=3 d=10032
-PASS  重新生成的商店绑定到新深度
 PASS  敌人不会生成在天体内部或贴脸   d=1540 need=1380
 PASS  敌人生成点完全在天体表面之外
 PASS  安全区不会生成在天体内部或贴脸   d=760 need=740
@@ -126,19 +123,13 @@ PASS  天体最终落地校验拒绝内容区
 PASS  安全区之外仍能落天体
 PASS  路线预置安全点预留了天体空间
 PASS  玩家所在位置不会突然生成天体
-PASS  开局生成第一个安全区
-PASS  开局安全区在可达范围内
-PASS  出生点直接生成敌人
-PASS  开局安全区与首个敌人保持间距   d=1549 need=1220
+PASS  击败商店所在段的敌人后商店自动重定位   depth=2 d=7007
+PASS  重定位后的商店绑定到新的路线段   leg=1 bound=2
+PASS  初始安全区落在路线预置点
 PASS  初始商店落在路线预置点
-PASS  初始商店绑定到当前敌人深度
-PASS  首个敌人落在路线预置点附近（允许避开天体）   d=1220
+PASS  初始商店比安全区离玩家更远
+PASS  首个敌人落在路线预置点   d=1769
 PASS  地图生成时填充了物质   matter=150
-PASS  开局已消费首个安全区节点
-PASS  击毁首个敌人后安全区仍在场
-PASS  多个种子的开局安全区都不贴脸   close=0/12
-PASS  高速越过预置点后安全区仍在可达范围   d=1648
-PASS  高速越过预置点后安全区落在前方
   bot seed=200 orbit=700 invuln=false -> hp=50 hits=0 t=21.5s state=4 dmg=导弹
   bot seed=300 orbit=700 invuln=true -> hp=0 hits=2 t=56.6s state=0 dmg=导弹
   bot seed=201 orbit=790 invuln=false -> hp=50 hits=0 t=8.5s state=4 dmg=导弹
@@ -147,4 +138,4 @@ PASS  高速越过预置点后安全区落在前方
   bot seed=302 orbit=880 invuln=true -> hp=0 hits=2 t=11.4s state=0 dmg=
 PASS  无敌机器人能靠诱导击毁炮塔（验证核心循环）   invuln kills 3/3
 PASS  普通机器人也能至少击毁一次炮塔   normal kills 1/3
-RESULT: 140 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 21.5333333333334, "state": 4 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 56.6166666666647, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 0, "time": 8.48333333333333, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 22.8666666666666, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 10.9000000000001, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": true, "hits": 2, "time": 11.3833333333335, "state": 0 }], "invuln_kills": 3, "normal_kills": 1 })
+RESULT: 131 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 21.5333333333334, "state": 4 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 56.6166666666647, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 0, "time": 8.48333333333333, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 22.8666666666666, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 10.9000000000001, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": true, "hits": 2, "time": 11.3833333333335, "state": 0 }], "invuln_kills": 3, "normal_kills": 1 })

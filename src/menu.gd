@@ -124,7 +124,7 @@ func _build_title() -> void:
 	best.position = Vector2(30, 660)
 	best.size = Vector2(700, 30)
 	_content.add_child(best)
-	var ver := _label("v1.0.7", 13, EG.C_DIM)
+	var ver := _label("v1.0.8", 13, EG.C_DIM)
 	ver.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	ver.offset_left = -140
 	ver.offset_top = -44
@@ -325,7 +325,7 @@ func _build_howto() -> void:
 	controls.size = Vector2(390, 190)
 	controls.add_theme_constant_override("line_spacing", 4)
 	p.add_child(controls)
-	var rules := _label("生存规则\n护盾 20，敌方导弹伤害 25：挨一发就结束。\n陨石只磨损 0.5，但被你撞飞的陨石能对攻击者造成 5 伤害。\n燃料 500；只有实际加速/减速/转向耗油，滑行免费。\n开局即生成第一个安全区（绿色方位标记），进圈补满燃料并清除威胁。\n安全区：补满燃料、清除导弹、隐藏威胁；\n会持续牵引并制动，高速掠过也会被拉回停靠。\n商店：代币换道具；跳过商店并连续击毁两个敌人后信标会重新定位。\n物质：靠近即会被牵引吸收，高速掠过/远离也会追上；\n两个敌人之间的空白路径可能藏有加速天体。", 14, EG.C_DIM)
+	var rules := _label("生存规则\n护盾 20，敌方导弹伤害 25：挨一发就结束。\n陨石只磨损 0.5，但被你撞飞的陨石能对攻击者造成 5 伤害。\n燃料 500；只有实际加速/减速/转向耗油，滑行免费。\n安全区：补满燃料、清除导弹、隐藏威胁信息。\n商店：用代币购买道具。\n贴近行星会自动绕行加速；导弹没有辅助装置，始终被引力弯折。", 14, EG.C_DIM)
 	rules.position = Vector2(640, top + 205)
 	rules.size = Vector2(390, 190)
 	rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
