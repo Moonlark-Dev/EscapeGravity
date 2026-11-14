@@ -4,20 +4,14 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > 2D 俯视角 · 物理驱动 · 无直接攻击的太空肉鸽
->
-> 你不能开火。你能做的只有三件事：**推进、加力、让导弹替你撞上敌人。**
-
-按《Escape Gravity（暂定名）设计文档》制作的发行版。上一版 `escape-gravity/` 是技术验证灰盒；本目录是重新实现、补齐发行所需系统（菜单、触屏、存档、音频、多平台构建）的版本。
 
 - 引擎：**Godot 4.7.2**（GL Compatibility，兼顾 Android）
 - 分辨率：1280×720 逻辑分辨率，`canvas_items` 拉伸 + `expand` 适配宽屏 / 刘海屏
-- 平台：**Windows x86_64**、**Android arm64-v8a**（landscape）；CI 另外产出 **Linux x86_64** 用于无显示环境验证
 - 美术：**全部为预渲染图片素材**（PNG），引擎运行时不绘制任何几何图形；UI 由贴图、九宫格与文字组成，粒子同样使用贴图
 - 音频：预渲染 WAV（程序化合成占位音频），运行时只播放文件
 - 中文字体：WenQuanYi Zen Hei（随包分发，见许可）
 - 许可：**MIT**（见 [`LICENSE`](LICENSE)；字体与引擎的第三方许可见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)）
 
-> **仓库状态**：已发布到 <https://github.com/Moonlark-Dev/EscapeGravity>。`main` 由 GitHub Actions 自动执行无头自测并导出 Windows / Linux 构建，产物见 Actions 工件；推送 `v*` tag 会创建 GitHub Release。`build/`、`dist/`、`keystore/` 与 `.godot/` 不入库；维护、构建与提交约定见 [`AGENTS.md`](AGENTS.md)。
 
 ### 1.0.9 更新
 
