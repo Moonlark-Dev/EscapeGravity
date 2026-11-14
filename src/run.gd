@@ -702,13 +702,24 @@ func on_missile_unlock(m) -> void:
 	stats.unlocks += 1
 	Fx.sparks(fx_layer, m.position, Color(1.0, 0.6, 0.3, 0.5), 4, 60.0)
 
+## 撞击伤害只看法线速度：正面撞上去才疼，贴着表面掠过几乎不掉血。
+## 撞敌人 ×1.5；撞敌人和撞天体一样，单次最高 5。
+func collision_damage(impact: float, enemy: bool) -> float:
+	if impact <= EG.COLLISION_SPEED_MIN:
+		return 0.0
+	var t := clampf(inverse_lerp(EG.COLLISION_SPEED_MIN, EG.COLLISION_SPEED_MAX, impact), 0.0, 1.0)
+	var dmg := lerpf(EG.COLLISION_DMG_MIN, EG.COLLISION_DMG_MAX, t)
+	if enemy:
+		dmg *= EG.COLLISION_ENEMY_MULT
+	return minf(dmg, EG.COLLISION_DMG_MAX)
+
 func _resolve_collisions() -> void:
-	# Player vs celestial bodies / enemies: bounce + 3..7 shield wear.
+	# Player vs celestial bodies / enemies: bounce + speed-based shield wear.
 	for b in galaxy.bodies:
 		if ship.position.distance_to(b.position) < b.radius + ship.R:
 			var impact: float = ship.bounce_from(b.position, b.radius)
-			if impact > 25.0:
-				var dmg := clampf(remap(impact, 50.0, 300.0, 3.0, 7.0), 3.0, 7.0)
+			var dmg := collision_damage(impact, false)
+			if dmg > 0.0:
 				hurt_ship(dmg, "体表")
 				Fx.sparks(fx_layer, ship.position, Color(0.5, 0.85, 1.0, 0.8), 8, 120.0)
 	for e in enemies:
@@ -716,8 +727,9 @@ func _resolve_collisions() -> void:
 			continue
 		if ship.position.distance_to(e.position) < e.radius + ship.R:
 			var impact2: float = ship.bounce_from(e.position, e.radius)
-			if impact2 > 25.0:
-				hurt_ship(clampf(remap(impact2, 50.0, 300.0, 3.0, 7.0), 3.0, 7.0), "外壳")
+			var dmg2 := collision_damage(impact2, true)
+			if dmg2 > 0.0:
+				hurt_ship(dmg2, "外壳")
 				Fx.sparks(fx_layer, ship.position, Color(1.0, 0.5, 0.35, 0.8), 8, 120.0)
 
 	# Meteors vs player / enemies.
@@ -934,12 +946,19 @@ func on_matter_collected(m: Matter) -> void:
 	var pile := _matter_pickup_count()
 	if pile % 4 == 0:
 		Fx.pickup(fx_layer, m.position, Color(0.5, 1.0, 0.95, 0.9))
+	var gained := false
 	while xp >= EG.XP_PER_LEVEL:
 		xp -= EG.XP_PER_LEVEL
 		level += 1
 		pending_levels += 1
-	if pending_levels > 0 and state == State.PLAYING:
+		gained = true
+	if not gained:
+		return
+	# 升级只在安全区内进行：游玩途中不打断节奏，先攒着。
+	if player_hidden and state == State.PLAYING:
 		begin_levelup()
+	elif hud != null:
+		hud.toast("等级提升 · 进入安全区后可升级", EG.C_VIOLET, 2.2)
 
 func _matter_pickup_count() -> int:
 	return int(stats["matter"])
@@ -1212,10 +1231,12 @@ func choose_upgrade(index: int) -> void:
 	_apply_upgrade(card)
 	upgrade_cards = []
 	pending_levels = maxi(0, pending_levels - 1)
+	if state == State.DESTROY:
+		# 升级卡给的道具撑满物品栏：add_item 已经把面板换成“丢弃一件”，
+		# 这里再关一次会把销毁面板清空，玩家就只剩键盘可选了。
+		return
 	if hud != null:
 		hud.hide_levelup()
-	if state == State.DESTROY:
-		return
 	if pending_levels > 0:
 		begin_levelup()
 	else:
@@ -1292,6 +1313,9 @@ func _enter_safe() -> void:
 		hud.toast("进入安全区 · 燃料已补满", EG.C_MINT, 2.6)
 		hud.set_info_hidden(true)
 		hud.set_safe_mode(true)
+	# 安全区是唯一的升级点：把游玩中攒下的次数在这里一次开出来。
+	if pending_levels > 0 and state == State.PLAYING:
+		begin_levelup()
 
 func _leave_safe() -> void:
 	player_hidden = false

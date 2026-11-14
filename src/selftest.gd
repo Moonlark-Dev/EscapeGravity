@@ -15,6 +15,8 @@ func run_tests() -> void:
 	_test_momentum_and_assist()
 	_test_missiles()
 	_test_meteor_matter()
+	_test_impact_damage()
+	_test_safe_zone_upgrades()
 	_test_zones()
 	_test_inventory_and_upgrades()
 	_test_skills()
@@ -415,6 +417,90 @@ func _test_meteor_matter() -> void:
 	_check("高速远离时物质仍会追上并被吸收（不会被甩飞）",
 		r.xp >= 3.0 and chase.collected, "xp=%.0f d=%.0f" % [r.xp, chase.position.distance_to(r.ship.position)])
 	_check("每 20 XP 升级", EG.XP_PER_LEVEL == 20.0)
+	_kill(r)
+
+func _test_impact_damage() -> void:
+	# 撞敌人：同速下是撞天体的 1.5 倍。
+	var r := _new_run(131)
+	_clear_arena(r)
+	for b in r.galaxy.bodies.duplicate():
+		b.remove()
+	r.galaxy.bodies.clear()
+	r.ship.shield = 20.0
+	r.ship.shield_max = 20.0
+	var e := _make_enemy(r, Vector2(0, -420))
+	r.ship.position = e.position + Vector2(0, e.radius + r.ship.R - 6.0)
+	r.ship.vel = Vector2(0, -150.0)
+	var enemy_dmg := r.collision_damage(150.0, true)
+	r._resolve_collisions()
+	_check("撞敌人：150 速度扣 1.5 倍伤害",
+		absf(r.ship.shield - (20.0 - enemy_dmg)) < 0.02 and absf(enemy_dmg - 2.94) < 0.05,
+		"dmg=%.2f shield=%.2f" % [enemy_dmg, r.ship.shield])
+	_kill(r)
+
+	# 撞天体：伤害随法线速度变化，且同速低于撞敌人。
+	var r2 := _new_run(132)
+	_clear_arena(r2)
+	for b in r2.galaxy.bodies.duplicate():
+		b.remove()
+	r2.galaxy.bodies.clear()
+	r2.ship.shield = 20.0
+	r2.ship.shield_max = 20.0
+	r2.new_gravity_body(Vector2.ZERO, 300.0, "planet", 1)
+	r2.ship.position = Vector2(0, 300.0 + r2.ship.R - 6.0)
+	r2.ship.vel = Vector2(0, -150.0)
+	var body_dmg := r2.collision_damage(150.0, false)
+	r2._resolve_collisions()
+	_check("撞天体：伤害随速度且低于撞敌人",
+		absf(r2.ship.shield - (20.0 - body_dmg)) < 0.02 and body_dmg > 0.0 and body_dmg < enemy_dmg,
+		"dmg=%.2f" % body_dmg)
+	_kill(r2)
+
+	var r3 := _new_run(133)
+	_clear_arena(r3)
+	var slow := r3.collision_damage(80.0, false)
+	var fast_body := r3.collision_damage(720.0, false)
+	var fast_enemy := r3.collision_damage(720.0, true)
+	_check("撞击伤害随速度升高", slow > 0.0 and slow < fast_body, "80=%.2f 720=%.2f" % [slow, fast_body])
+	_check("撞击伤害最高 5（敌人与天体同顶）",
+		absf(fast_body - 5.0) < 0.001 and absf(fast_enemy - 5.0) < 0.001)
+	_check("擦边（低于 40）不掉护盾", absf(r3.collision_damage(30.0, true)) < 0.001)
+	_kill(r3)
+
+func _test_safe_zone_upgrades() -> void:
+	var r := _new_run(134)
+	_clear_arena(r)
+	r.ship.position = Vector2.ZERO
+	r.xp = EG.XP_PER_LEVEL - 1.0
+	var m := Matter.new()
+	m.run = r
+	m.xp = 1
+	m.position = Vector2.ZERO
+	r.world.add_child(m)
+	r.matters.append(m)
+	r.on_matter_collected(m)
+	_check("游玩中升级只累积、不弹面板",
+		r.state == Run.State.PLAYING and r.pending_levels == 1 and r.level == 2,
+		"state=%d pending=%d lv=%d" % [r.state, r.pending_levels, r.level])
+
+	r.safe_zone = r.make_zone("safe", Vector2.ZERO)
+	r._zone_checks()
+	_check("进入安全区才打开升级面板",
+		r.state == Run.State.LEVELUP and r.upgrade_cards.size() == 3,
+		"state=%d cards=%d" % [r.state, r.upgrade_cards.size()])
+	r.choose_upgrade(0)
+	_check("选完升级回到游玩", r.state == Run.State.PLAYING and r.pending_levels == 0)
+
+	# 停靠期间继续吸收物质：新攒下的升级应立刻弹面板。
+	r.xp = EG.XP_PER_LEVEL - 1.0
+	var m2 := Matter.new()
+	m2.run = r
+	m2.xp = 1
+	m2.position = r.ship.position
+	r.world.add_child(m2)
+	r.matters.append(m2)
+	r.on_matter_collected(m2)
+	_check("安全区内升级立即弹面板", r.state == Run.State.LEVELUP and r.pending_levels == 1)
 	_kill(r)
 
 func _test_zones() -> void:

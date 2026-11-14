@@ -9,10 +9,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / "dist"
-VERSION = "1.0.8"
+VERSION = "1.0.9"
 GAME = "EscapeGravity"
 
-RUN_README = """Escape Gravity 1.0.8
+RUN_README = """Escape Gravity 1.0.9
 ====================
 
 一款 2D 俯视角、物理驱动、无直接攻击的太空肉鸽。
@@ -46,7 +46,8 @@ R                  失败后重开
 - 安全区初始只比飞船大一点，飞到中心会扩张成完整的补给圈（扩张瞬间即视为进入，不会误飞出去）。
 - 敌人进入你的屏幕前不会显示位置，也不会出现在雷达上；靠近后它会主动朝你逼近。
 - 但未发现的敌人仍会开火：导弹从屏幕外绕一圈再切入，射入方向更偏向敌人所在的方位，用来提示威胁来自哪里。
-- 物质自动吸收，每 20 XP 升一级，三选一强化。
+- 物质自动吸收，每 20 XP 升一级；升级只在安全区结算，游玩途中 HUD 会提示“待升级 ×N”。
+- 撞上敌舰或天体按撞击瞬间的速度扣护盾，撞敌人 ×1.5、单次最高 5；贴着表面擦过几乎不掉血。
 
 提示
 ----
@@ -54,7 +55,7 @@ R                  失败后重开
 - 设置、最佳深度等保存在 %APPDATA%/Godot/app_userdata/Escape Gravity/。
 - 字体：WenQuanYi Zen Hei（GPL-2 + 字体嵌入例外）。完整许可见 LICENSES/。
 
-版本 1.0.8 · 2026-11-04
+版本 1.0.9 · 2026-11-14
 """
 
 LICENSE_README = "第三方声明与字体许可，见 THIRD_PARTY_NOTICES.md 与 LICENSES/。\n"
@@ -113,12 +114,12 @@ def main() -> None:
 
     install_note = DIST / "ANDROID-安装说明.txt"
     install_note.write_text(
-        "Escape Gravity 1.0.8（Android arm64）\n"
+        "Escape Gravity 1.0.9（Android arm64）\n"
         "1. 允许“安装未知来源应用”；\n"
-        "2. 安装 EscapeGravity-1.0.8-android-arm64.apk；\n"
+        "2. 安装 EscapeGravity-1.0.9-android-arm64.apk；\n"
         "3. 横屏游玩，进入游戏后使用左侧虚拟摇杆与右侧加力/技能按钮；\n"
         "4. 需要 Android 7.0+ arm64 设备。\n"
-        "minSdk 24 / targetSdk 36 / versionCode 11 / 包名 com.escapegravity.game\n",
+        "minSdk 24 / targetSdk 36 / versionCode 12 / 包名 com.escapegravity.game\n",
         encoding="utf-8",
     )
 

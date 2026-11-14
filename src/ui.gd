@@ -632,14 +632,16 @@ func refresh() -> void:
 	_refresh_threats()
 	_refresh_hint()
 	_safe_label.text = ""
+	_safe_label.add_theme_color_override("font_color", EG.C_MINT)
 	if run.safe_timer > 0.0 and run.current_enemy == null:
 		_safe_label.text = "威胁解除 · %.1fs" % run.safe_timer
 	elif run.fuel_dead_timer > 0.0:
 		_safe_label.text = "燃料耗尽 · %.0fs 后失联" % (12.0 - run.fuel_dead_timer)
 		_safe_label.add_theme_color_override("font_color", EG.C_MAGENTA)
-		_safe_label.show()
-		return
-	_safe_label.add_theme_color_override("font_color", EG.C_MINT)
+	elif run.pending_levels > 0:
+		# 升级被攒到安全区：游玩中只提示次数，不弹面板。
+		_safe_label.text = "待升级 ×%d · 进入安全区强化" % run.pending_levels
+		_safe_label.add_theme_color_override("font_color", EG.C_VIOLET)
 
 func _refresh_enemy() -> void:
 	var e = run.current_enemy

@@ -110,6 +110,16 @@ const METEOR_SPEED_MIN := 110.0
 const METEOR_SPEED_MAX := 210.0
 const METEOR_SPAWN_DIST := 900.0
 
+# ---- Impact (ramming a hull or a celestial body) ----
+## 撞击伤害只由撞击瞬间沿法线的速度决定：40 px/s 起算，380 px/s 到顶。
+## 撞敌人再乘 1.5，但不管撞敌人还是撞天体，单次最高都是 5
+## （护盾 20 至少能扛 4 下；正常引擎速度正面撞炮塔外壳约 3 点）。
+const COLLISION_SPEED_MIN := 40.0
+const COLLISION_SPEED_MAX := 380.0
+const COLLISION_DMG_MIN := 0.5
+const COLLISION_DMG_MAX := 5.0
+const COLLISION_ENEMY_MULT := 1.5
+
 # ---- Matter / XP ----
 ## 进入这个半径就锁定并开始牵引；牵引速度高于飞船外部硬上限
 ## SHIP_SPEED_HARD=720，所以玩家高速掠过时物质仍能追上，不会被甩飞。

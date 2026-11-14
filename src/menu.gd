@@ -124,7 +124,7 @@ func _build_title() -> void:
 	best.position = Vector2(30, 660)
 	best.size = Vector2(700, 30)
 	_content.add_child(best)
-	var ver := _label("v1.0.8", 13, EG.C_DIM)
+	var ver := _label("v" + str(ProjectSettings.get_setting("application/config/version", "1.0.9")), 13, EG.C_DIM)
 	ver.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	ver.offset_left = -140
 	ver.offset_top = -44
