@@ -26,3 +26,6 @@ Thumbs.db
 # Local-only overrides / logs
 *.local.*
 *.log
+
+# AI / agent scratch data
+.dsh/
