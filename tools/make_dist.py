@@ -1,18 +1,34 @@
 #!/usr/bin/env python3
-"""Assemble dist/: Windows zip, Android APK, Linux tarball + SHA256SUMS."""
+"""Assemble dist/: per-platform release packages + SHA256SUMS.
+
+用法：
+    python3 tools/make_dist.py                        # 打包当前版本的全部平台
+    python3 tools/make_dist.py --platforms windows,linux
+    python3 tools/make_dist.py --version 1.0.9 --platforms windows
+
+产物命名固定为 `EscapeGravity-<version>-<platform>.<ext>`，可直接作为 CI 工件与
+GitHub Release 资产上传。
+"""
+from __future__ import annotations
+
+import argparse
 import hashlib
-import os
+import io
+import re
 import shutil
 import tarfile
+import time
 import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / "dist"
-VERSION = "1.0.9"
 GAME = "EscapeGravity"
+ALL_PLATFORMS = ("windows", "linux", "android")
 
-RUN_README = """Escape Gravity 1.0.9
+GODOT_LICENSE = "Godot Engine 4.7.2 — MIT License.\nSee THIRD_PARTY_NOTICES.md.\n"
+
+RUN_README = """Escape Gravity {version}
 ====================
 
 一款 2D 俯视角、物理驱动、无直接攻击的太空肉鸽。
@@ -54,87 +70,140 @@ R                  失败后重开
 - 首次运行可能出现 SmartScreen 提示（未做商业签名），选择“仍要运行”。
 - 设置、最佳深度等保存在 %APPDATA%/Godot/app_userdata/Escape Gravity/。
 - 字体：WenQuanYi Zen Hei（GPL-2 + 字体嵌入例外）。完整许可见 LICENSES/。
+- 游戏代码以 MIT 许可证发布，完整文本见 LICENSE。
 
-版本 1.0.9 · 2026-11-14
+版本 {version}
 """
 
-LICENSE_README = "第三方声明与字体许可，见 THIRD_PARTY_NOTICES.md 与 LICENSES/。\n"
+ANDROID_NOTE = """Escape Gravity {version}（Android arm64）
+1. 允许“安装未知来源应用”；
+2. 安装 EscapeGravity-{version}-android-arm64.apk；
+3. 横屏游玩，进入游戏后使用左侧虚拟摇杆与右侧加力/技能按钮；
+4. 需要 Android 7.0+ arm64 设备。
+minSdk 24 / targetSdk 36 / versionCode 12 / 包名 com.escapegravity.game
+"""
+
+
+def project_version() -> str:
+    """从 project.godot 读取唯一权威版本号。"""
+    text = (ROOT / "project.godot").read_text(encoding="utf-8")
+    match = re.search(r'^config/version="([^"]+)"', text, re.MULTILINE)
+    if not match:
+        raise SystemExit("project.godot 中找不到 config/version")
+    return match.group(1)
 
 
 def sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    digest = hashlib.sha256()
+    with open(path, "rb") as file:
+        for chunk in iter(lambda: file.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
-def add_common(z: zipfile.ZipFile, arc_root: str) -> None:
-    z.writestr(f"{arc_root}/README.txt", RUN_README)
-    z.writestr(f"{arc_root}/THIRD_PARTY_NOTICES.md", (ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8"))
-    z.write(ROOT / "licenses/WenQuanYi-ZenHei.txt", f"{arc_root}/LICENSES/WenQuanYi-ZenHei.txt")
-    z.writestr(f"{arc_root}/LICENSES/GODOT.txt", "Godot Engine 4.7.2 — MIT License.\nSee THIRD_PARTY_NOTICES.md.\n")
+def common_files(version: str) -> list[tuple[str, bytes]]:
+    """每个平台包都附带的自述、许可与第三方声明。"""
+    return [
+        ("README.txt", RUN_README.format(version=version).encode("utf-8")),
+        ("LICENSE", (ROOT / "LICENSE").read_bytes()),
+        ("THIRD_PARTY_NOTICES.md", (ROOT / "THIRD_PARTY_NOTICES.md").read_bytes()),
+        ("LICENSES/WenQuanYi-ZenHei.txt", (ROOT / "licenses/WenQuanYi-ZenHei.txt").read_bytes()),
+        ("LICENSES/GODOT.txt", GODOT_LICENSE.encode("utf-8")),
+    ]
+
+
+def add_zip_bytes(archive: zipfile.ZipFile, arcname: str, data: bytes) -> None:
+    info = zipfile.ZipInfo(arcname, date_time=(2026, 1, 1, 0, 0, 0))
+    info.compress_type = zipfile.ZIP_DEFLATED
+    info.external_attr = 0o644 << 16
+    archive.writestr(info, data)
+
+
+def add_tar_bytes(archive: tarfile.TarFile, arcname: str, data: bytes, mode: int = 0o644) -> None:
+    info = tarfile.TarInfo(arcname)
+    info.size = len(data)
+    info.mode = mode
+    info.mtime = int(time.time())
+    archive.addfile(info, io.BytesIO(data))
+
+
+def package_windows(version: str) -> Path:
+    exe = ROOT / "build/windows/EscapeGravity.exe"
+    if not exe.exists():
+        raise SystemExit(f"缺少 Windows 构建产物：{exe}")
+    out = DIST / f"{GAME}-{version}-windows-x86_64.zip"
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+        archive.write(exe, f"{GAME}/EscapeGravity.exe")
+        for name, data in common_files(version):
+            add_zip_bytes(archive, f"{GAME}/{name}", data)
+    return out
+
+
+def package_linux(version: str) -> Path:
+    binary = ROOT / "build/linux/EscapeGravity.x86_64"
+    if not binary.exists():
+        raise SystemExit(f"缺少 Linux 构建产物：{binary}")
+    out = DIST / f"{GAME}-{version}-linux-x86_64.tar.gz"
+    with tarfile.open(out, "w:gz", compresslevel=6) as archive:
+        info = archive.gettarinfo(str(binary), f"{GAME}/EscapeGravity.x86_64")
+        info.mode = 0o755
+        with open(binary, "rb") as file:
+            archive.addfile(info, file)
+        for name, data in common_files(version):
+            add_tar_bytes(archive, f"{GAME}/{name}", data)
+    return out
+
+
+def package_android(version: str) -> Path:
+    apk = ROOT / "build/android/EscapeGravity.apk"
+    if not apk.exists():
+        raise SystemExit(f"缺少 Android 构建产物：{apk}")
+    out = DIST / f"{GAME}-{version}-android-arm64.apk"
+    shutil.copy2(apk, out)
+    note = DIST / "ANDROID-安装说明.txt"
+    note.write_text(ANDROID_NOTE.format(version=version), encoding="utf-8")
+    return out
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="打包 Escape Gravity 发布包")
+    parser.add_argument(
+        "--platforms",
+        default=",".join(ALL_PLATFORMS),
+        help=f"逗号分隔的平台，可选 {', '.join(ALL_PLATFORMS)}（默认全部）",
+    )
+    parser.add_argument("--version", default=None, help="版本号（默认读取 project.godot）")
+    args = parser.parse_args()
+
+    platforms = [item.strip() for item in args.platforms.split(",") if item.strip()]
+    unknown = sorted(set(platforms) - set(ALL_PLATFORMS))
+    if unknown:
+        raise SystemExit(f"未知平台：{', '.join(unknown)}")
+    version = args.version or project_version()
+
     DIST.mkdir(parents=True, exist_ok=True)
     for old in DIST.glob("*"):
         if old.is_file():
             old.unlink()
 
-    win_exe = ROOT / "build/windows/EscapeGravity.exe"
-    lin_bin = ROOT / "build/linux/EscapeGravity.x86_64"
-    apk = ROOT / "build/android/EscapeGravity.apk"
-    for p in (win_exe, lin_bin, apk):
-        if not p.exists():
-            raise SystemExit(f"missing build artifact: {p}")
+    for platform in platforms:
+        if platform == "windows":
+            package_windows(version)
+        elif platform == "linux":
+            package_linux(version)
+        elif platform == "android":
+            package_android(version)
 
-    win_zip = DIST / f"{GAME}-{VERSION}-windows-x86_64.zip"
-    with zipfile.ZipFile(win_zip, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
-        z.write(win_exe, f"{GAME}/EscapeGravity.exe")
-        add_common(z, GAME)
-
-    lin_tar = DIST / f"{GAME}-{VERSION}-linux-x86_64.tar.gz"
-    with tarfile.open(lin_tar, "w:gz", compresslevel=6) as t:
-        t.add(lin_bin, arcname=f"{GAME}/EscapeGravity.x86_64")
-        for name, data in (
-            ("README.txt", RUN_README),
-            ("THIRD_PARTY_NOTICES.md", (ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")),
-            ("LICENSES/WenQuanYi-ZenHei.txt", (ROOT / "licenses/WenQuanYi-ZenHei.txt").read_text(encoding="utf-8")),
-            ("LICENSES/GODOT.txt", "Godot Engine 4.7.2 — MIT License.\nSee THIRD_PARTY_NOTICES.md.\n"),
-        ):
-            p = ROOT / name if name.startswith("LICENSES") or name.endswith(".md") else None
-            tmp = DIST / ("_tmp_" + name.replace("/", "_"))
-            tmp.write_text(data, encoding="utf-8")
-            t.add(tmp, arcname=f"{GAME}/{name}")
-            tmp.unlink()
-
-    android_out = DIST / f"{GAME}-{VERSION}-android-arm64.apk"
-    shutil.copy2(apk, android_out)
-
-    install_note = DIST / "ANDROID-安装说明.txt"
-    install_note.write_text(
-        "Escape Gravity 1.0.9（Android arm64）\n"
-        "1. 允许“安装未知来源应用”；\n"
-        "2. 安装 EscapeGravity-1.0.9-android-arm64.apk；\n"
-        "3. 横屏游玩，进入游戏后使用左侧虚拟摇杆与右侧加力/技能按钮；\n"
-        "4. 需要 Android 7.0+ arm64 设备。\n"
-        "minSdk 24 / targetSdk 36 / versionCode 12 / 包名 com.escapegravity.game\n",
-        encoding="utf-8",
-    )
-
-    sums = []
-    for p in sorted(DIST.glob("*")):
-        if p.is_file():
-            sums.append(f"{sha256(p)}  {p.name}")
+    packaged = sorted(path for path in DIST.glob("*") if path.is_file())
+    sums = [f"{sha256(path)}  {path.name}" for path in packaged]
     (DIST / "SHA256SUMS.txt").write_text("\n".join(sums) + "\n", encoding="utf-8")
 
-    print("dist:")
-    for p in sorted(DIST.glob("*")):
-        print(f"  {p.name:48s} {p.stat().st_size/1048576:8.1f} MiB")
+    print(f"Escape Gravity {version} —— dist/：")
+    for path in sorted(DIST.glob("*")):
+        if path.is_file():
+            print(f"  {path.name:52s} {path.stat().st_size / 1048576:8.1f} MiB")
     print()
-    for line in sums:
-        print(line)
+    print("\n".join(sums))
 
 
 if __name__ == "__main__":
