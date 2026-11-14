@@ -15,10 +15,11 @@
 
 ## 发布状态
 
-- 本仓库是**本地 Git 仓库**，当前**没有 remote、没有推送、没有打 tag / release**。
-- 未经用户明确要求，不要执行 `git remote add`、`git push`、创建 GitHub/GitLab 仓库、上传发行包或发布 Web 版。
-- 用户说“暂不发布”时，只做本地提交；不要顺手发 Release。
-- 本版**不提供 Web 构建**，`build_all.sh` 也已移除 Web 导出。
+- 仓库已发布：<https://github.com/Moonlark-Dev/EscapeGravity>（公开，**MIT**），`main` 已推送。
+- GitHub Actions（`.github/workflows/build.yml`）在每次 push / PR 时跑无头自测、导出 Windows/Linux 并上传工件；推送 `v*` tag 自动创建 GitHub Release。
+- 未经用户明确要求，不要创建仓库、修改仓库可见性、打 tag、发 Release 或上传发行包到其他位置。
+- 用户说“暂不发布”时，只做本地提交，不要顺手推送或发 Release。
+- 本版**不提供 Web 构建**，`export_presets.cfg` 也没有 Web 预设。
 
 ## 技术栈与运行环境
 
@@ -37,8 +38,12 @@
 
 ```
 escape-gravity-release/
+├── .github/
+│   ├── actions/setup-godot/   # 下载/缓存 Godot 与导出模板的复合 action
+│   └── workflows/build.yml    # 自测 + Windows/Linux 导出 + 工件 + Release
 ├── project.godot              # 项目配置、autoload、拉伸、ETC2/ASTC
-├── export_presets.cfg         # Windows / Android 导出预设
+├── export_presets.cfg         # Windows / Linux / Android 导出预设（不含签名口令）
+├── LICENSE                    # MIT
 ├── scenes/main.tscn           # 唯一场景入口
 ├── src/
 │   ├── main.gd                # 应用外壳：标题、开局、暂停、淡入淡出、截图/自测入口
@@ -84,7 +89,7 @@ escape-gravity-release/
 7. **中文 UI。** 新增文案用中文；字体已随包分发，不要引入会破坏 Android 包体的字体。
 8. **一击结束的难度基线。** 护盾 20、敌方导弹 25；不要为了“更容易”悄悄改伤害/护盾而不更新文档和自测。
 9. **不提交构建产物和密钥。** `build/`、`dist/`、`.godot/`、`keystore/` 已被 `.gitignore` 排除；不要 `git add -f`。
-10. **发布前必须清理敏感信息。** `export_presets.cfg` 目前含本地 Android 签名口令；在添加 remote / 公开仓库之前，必须清空口令、轮换密钥，并确认 `keystore/` 未被跟踪。
+10. **签名口令不进入 Git。** `export_presets.cfg` 只引用 keystore 路径与别名；口令放在本地 `keystore/env.sh`（gitignored）或 CI secret，通过 `GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD` 等环境变量注入。不要 `git add -f keystore/`，也不要把口令写进 README、构建日志或提交信息。
 
 ## 关键玩法不变量
 
@@ -126,7 +131,8 @@ bash tools/build_all.sh
 /home/dsh/workspace/_godot/Godot_v4.7.2-stable_linux.x86_64 \
   --headless --path . --export-release "Windows Desktop" build/windows/EscapeGravity.exe
 
-# 只导出 Android（需要 JDK 17 / SDK / keystore）
+# 只导出 Android（需要 JDK 17 / SDK / keystore；口令由 keystore/env.sh 注入）
+source keystore/env.sh
 JAVA_HOME=/home/dsh/opt/jdk17 ANDROID_HOME=/home/dsh/opt/android-sdk \
   /home/dsh/workspace/_godot/Godot_v4.7.2-stable_linux.x86_64 \
   --headless --path . --export-release "Android" build/android/EscapeGravity.apk
@@ -138,15 +144,16 @@ xvfb-run -a -s "-screen 0 1280x720x24" ./build/linux/EscapeGravity.x86_64 -- --s
 xvfb-run -a -s "-screen 0 2400x1080x24" ./build/linux/EscapeGravity.x86_64 \
   --resolution 2400x1080 -- --touch --shots=/tmp/shots_mobile
 
-# 打包 dist + SHA256SUMS
-python3 tools/make_dist.py
+# 打包 dist + SHA256SUMS（CI 只打包 windows,linux）
+python3 tools/make_dist.py --platforms windows,linux
 ```
 
 注意：
 
 - `--shots` / `--touch` 是 `OS.get_cmdline_user_args()`，必须放在 `--` 之后。
-- Android 导出会读取 `keystore/escapegravity.keystore`；该目录不在 Git 中，换机器需另行恢复。
+- Android 导出会读取 `keystore/escapegravity.keystore` 与环境变量口令；该目录不在 Git 中，换机器需另行恢复。
 - 不要在仓库里启动 Web 服务器；用户已明确不需要 Web 试玩。
+- CI 在 push / PR 时自动运行（`.github/workflows/build.yml`），也可用 `gh workflow run build.yml` 手动触发；本地不必重复导出已验证的平台。
 
 ## 验证与完成标准
 
@@ -161,6 +168,7 @@ python3 tools/make_dist.py
 4. APK：`apksigner verify` 通过 v2 + v3；`aapt2 dump badging` 的包名/版本/SDK/arm64/landscape 正确；无危险权限。
 5. Windows：`file build/windows/EscapeGravity.exe` 为 PE32+ x86-64，尾部含 `GDPC` 内嵌 PCK。
 6. 同步文档：`README.md` 的版本/数值/交付物表、`docs/DESIGN_MAP.md`、`docs/QA.md`、`docs/ART.md`（如改缩放）、`docs/selftest_output.txt`。
+7. 推送后确认 GitHub Actions 绿色，且 `escape-gravity-dist` / `EscapeGravity-windows-x86_64` / `EscapeGravity-linux-x86_64` 工件已生成。
 
 ## 常见任务
 
@@ -174,7 +182,7 @@ python3 tools/make_dist.py
 
 ## Git 约定
 
-- 当前在 `main` 分支；本地仓库，无 remote。
+- 当前在 `main` 分支；`origin` 为 <https://github.com/Moonlark-Dev/EscapeGravity.git>（公开，MIT）。
 - 提交信息用中文或英文均可，建议 `type(scope): subject`，例如：
   - `fix(mobile): 技能键移到右侧并放大`
   - `fix(world): 背景改为相机锚定`
@@ -186,7 +194,7 @@ python3 tools/make_dist.py
   ```
   确认没有 `build/`、`dist/`、`keystore/`、`.godot/`、`__pycache__/` 被跟踪。
 - **不要**在没有用户明确要求时 `git tag`、`git push`、创建 Release 或上传 APK/zip。
-- 如果用户要求发布：先处理 `export_presets.cfg` 的签名口令与 `keystore/`（轮换/移出仓库），再讨论 remote 与 release。
+- 发版流程：改版本与文档 → 推送 `main` → 等 Actions 绿色 → 推送 `vX.Y.Z` tag（触发 `release` job）。Android APK 仍由本地导出后手工附到 Release（CI 不接触签名密钥）。
 
 ## 已知限制
 

@@ -1,5 +1,8 @@
 # Escape Gravity · 1.0.9 发行版
 
+[![Build](https://github.com/Moonlark-Dev/EscapeGravity/actions/workflows/build.yml/badge.svg)](https://github.com/Moonlark-Dev/EscapeGravity/actions/workflows/build.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 > 2D 俯视角 · 物理驱动 · 无直接攻击的太空肉鸽
 >
 > 你不能开火。你能做的只有三件事：**推进、加力、让导弹替你撞上敌人。**
@@ -8,12 +11,13 @@
 
 - 引擎：**Godot 4.7.2**（GL Compatibility，兼顾 Android）
 - 分辨率：1280×720 逻辑分辨率，`canvas_items` 拉伸 + `expand` 适配宽屏 / 刘海屏
-- 平台：**Windows x86_64**、**Android arm64-v8a**（landscape）
+- 平台：**Windows x86_64**、**Android arm64-v8a**（landscape）；CI 另外产出 **Linux x86_64** 用于无显示环境验证
 - 美术：**全部为预渲染图片素材**（PNG），引擎运行时不绘制任何几何图形；UI 由贴图、九宫格与文字组成，粒子同样使用贴图
 - 音频：预渲染 WAV（程序化合成占位音频），运行时只播放文件
 - 中文字体：WenQuanYi Zen Hei（随包分发，见许可）
+- 许可：**MIT**（见 [`LICENSE`](LICENSE)；字体与引擎的第三方许可见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)）
 
-> **仓库状态**：本目录为本地 Git 仓库（`main`，未配置 remote，暂未发布）。`build/`、`dist/`、`keystore/` 与 `.godot/` 不入库；维护、构建与提交约定见 [`AGENTS.md`](AGENTS.md)。
+> **仓库状态**：已发布到 <https://github.com/Moonlark-Dev/EscapeGravity>。`main` 由 GitHub Actions 自动执行无头自测并导出 Windows / Linux 构建，产物见 Actions 工件；推送 `v*` tag 会创建 GitHub Release。`build/`、`dist/`、`keystore/` 与 `.godot/` 不入库；维护、构建与提交约定见 [`AGENTS.md`](AGENTS.md)。
 
 ### 1.0.9 更新
 
@@ -71,17 +75,24 @@
 
 | 文件 | 平台 | 大小 | SHA-256 |
 |---|---|---|---|
-| `dist/EscapeGravity-1.0.9-windows-x86_64.zip` | Windows 10/11 x64 | 57.4 MiB | `b32f54b4…f3cd5f73` |
-| `dist/EscapeGravity-1.0.9-android-arm64.apk` | Android 7.0+ arm64 | 47.3 MiB | `0cbaeea9…db305cc3` |
-| `dist/EscapeGravity-1.0.9-linux-x86_64.tar.gz` | Linux x64（附带） | 48.2 MiB | `eae39594…f4980054` |
+| `dist/EscapeGravity-1.0.9-windows-x86_64.zip` | Windows 10/11 x64 | 57.4 MiB | `e2ed487a…8f9b9776` |
+| `dist/EscapeGravity-1.0.9-android-arm64.apk` | Android 7.0+ arm64 | 47.3 MiB | `2c835bd8…f11f84a5` |
+| `dist/EscapeGravity-1.0.9-linux-x86_64.tar.gz` | Linux x64（附带） | 48.2 MiB | `14fd61f8…8b059258` |
 | `build/windows/EscapeGravity.exe` | 未压缩的 Windows 单文件 | 125.9 MiB | `9d77ec22…9d6830f4` |
-| `build/android/EscapeGravity.apk` | 未重命名的 Android 包 | 47.3 MiB | `0cbaeea9…db305cc3` |
+| `build/android/EscapeGravity.apk` | 未重命名的 Android 包 | 47.3 MiB | `2c835bd8…f11f84a5` |
 | `docs/shots/*.png` | 由**导出包**实际运行的截图 | — | — |
 
-完整校验和：`dist/SHA256SUMS.txt`。
+完整校验和：`dist/SHA256SUMS.txt`。Windows / Linux 压缩包内附带 `LICENSE`、`THIRD_PARTY_NOTICES.md` 与 `LICENSES/`。
 
 - Windows 1.0.9 直链：[EscapeGravity-1.0.9-windows-x86_64.zip](https://files.thisisxd.top/d/EscapeGravity-1.0.9-windows-x86_64.zip)
 - Android 1.0.9 直链：[EscapeGravity-1.0.9-android-arm64.apk](https://files.thisisxd.top/d/EscapeGravity-1.0.9-android-arm64.apk)
+
+**自动构建**：每次推送到 `main`，GitHub Actions 会跑 140 项无头自测、导出 Windows / Linux 可执行文件并上传工件
+（`escape-gravity-dist`、`EscapeGravity-windows-x86_64`、`EscapeGravity-linux-x86_64`）；推送 `v*` tag 时自动把
+`dist/*` 附到 GitHub Release。下载入口：
+
+- Actions 工件：<https://github.com/Moonlark-Dev/EscapeGravity/actions/workflows/build.yml>
+- Releases：<https://github.com/Moonlark-Dev/EscapeGravity/releases>
 
 > 下表是本次 1.0.9 重新构建的交付包，`build/` 与 `dist/` 均来自同一次构建。
 
@@ -233,8 +244,12 @@ Windows 包为单文件 exe（内嵌 PCK），解压即玩，无需安装。Andr
 
 ```
 escape-gravity-release/
+├── .github/
+│   ├── actions/setup-godot/  # 下载并缓存 Godot 与导出模板
+│   └── workflows/build.yml   # 自测 + Windows/Linux 导出 + 工件 + Release
 ├── project.godot             # 4.7 / GL Compatibility / 1280x720 / 自动加载
-├── export_presets.cfg        # Windows / Android / Linux
+├── export_presets.cfg        # Windows / Linux / Android 导出预设（不含签名口令）
+├── LICENSE                   # MIT
 ├── scenes/main.tscn          # 单场景入口
 ├── src/
 │   ├── consts.gd             # 全部平衡数值与调色板
@@ -256,7 +271,8 @@ escape-gravity-release/
 ├── assets/                   # world / ui / audio / fonts
 ├── tools/                    # 素材生成、后期、构建、打包
 ├── docs/                     # ART.md / DESIGN_MAP.md / QA.md / 资产清单 / 截图
-└── build/ dist/              # 导出产物 / 发布包
+├── keystore/                 # 本地 Android 签名材料（gitignored）
+└── build/ dist/              # 导出产物 / 发布包（gitignored）
 ```
 
 技术要点：
@@ -348,9 +364,8 @@ godot --headless --path . -- --selftest
 依赖：
 
 - Godot 4.7.2（headless 即可）+ 4.7.2 导出模板（Windows / Linux / Android）
-- JDK 17、Android SDK（build-tools 35、platform 35/36）
-- 已配置 Godot Editor Settings 的 `export/android/android_sdk_path` 与 `java_sdk_path`
-- 本机路径示例：`/home/dsh/opt/jdk17`、`/home/dsh/opt/android-sdk`、Godot 在 `/home/dsh/workspace/_godot/`
+- JDK 17、Android SDK（build-tools 35、platform 35/36，仅 Android 需要）
+- 已配置 Godot Editor Settings 的 `export/android/android_sdk_path` 与 `java_sdk_path`（或设置 `ANDROID_HOME` / `JAVA_HOME`）
 
 ```bash
 # 自测
@@ -359,15 +374,26 @@ godot --headless --path . -- --selftest
 godot --headless --path . --export-release "Windows Desktop" build/windows/EscapeGravity.exe
 # Linux（用于无显示环境验证）
 godot --headless --path . --export-release "Linux (verification)" build/linux/EscapeGravity.x86_64
-# Android（release 签名）
-JAVA_HOME=/home/dsh/opt/jdk17 godot --headless --path . --export-release "Android" build/android/EscapeGravity.apk
-# 打包 dist + 校验和
-python3 tools/make_dist.py
+# 打包 dist + 校验和（CI 使用 windows,linux）
+python3 tools/make_dist.py --platforms windows,linux
 ```
 
-一键脚本：`bash tools/build_all.sh`。
+Android 签名：`export_presets.cfg` 只保存密钥路径与别名，**口令从环境变量读取**：
 
-Android 签名密钥：`keystore/escapegravity.keystore`（别名/口令见 `keystore/README.md`）。**请妥善保存**；丢失后无法覆盖安装更新。
+```bash
+source keystore/env.sh   # 本地签名文件，与整个 keystore/ 一起被 .gitignore 排除
+JAVA_HOME=/path/to/jdk17 godot --headless --path . --export-release "Android" build/android/EscapeGravity.apk
+```
+
+一键脚本：`bash tools/build_all.sh`（存在 `keystore/env.sh` 时连 Android 一起构建，否则跳过 Android）。
+
+**CI**：`.github/workflows/build.yml` 在 `ubuntu-24.04` 上下载并缓存 Godot 4.7.2 与导出模板，依次执行资源导入、源码自测、Windows/Linux 导出、导出包自测、`make_dist.py --platforms windows,linux`，然后上传三个工件：
+
+- `escape-gravity-dist`：Windows zip、Linux tar.gz、`SHA256SUMS.txt`
+- `EscapeGravity-windows-x86_64`：未压缩的 `EscapeGravity.exe`
+- `EscapeGravity-linux-x86_64`：未压缩的 `EscapeGravity.x86_64`
+
+推送 `v*` tag 时，`release` job 会把 `dist/*` 附到 GitHub Release。CI 不接触 Android 签名材料，APK 建议在本地用 `keystore/` 导出。
 
 ---
 
@@ -384,10 +410,10 @@ Android 签名密钥：`keystore/escapegravity.keystore`（别名/口令见 `key
 
 ## 9. 许可与致谢
 
-- 游戏代码、程序化生成的占位美术与音频：随本项目提供，供你自由替换与商用（美术/音频为程序生成，无第三方素材）。
+- **游戏代码、程序化生成的占位美术与音频**：**MIT License**，见 [`LICENSE`](LICENSE)。可自由使用、修改、再分发与商用；美术/音频为程序生成，不含第三方素材。
 - **Godot Engine** © Godot Engine contributors，MIT License。
 - **WenQuanYi Zen Hei** © 2007–2009 Qianqian Fang 与文泉驿项目，GPL-2 with Font embedding exception；完整许可见 `licenses/WenQuanYi-ZenHei.txt`。
 - 设计文档：《Escape Gravity（暂定名）设计文档》，游戏按此实现。
-- 灰盒参考：`../escape-gravity/`（技术验证版，程序化绘制；本版重写为资产驱动）。
+- 灰盒参考：早期技术验证版（程序化绘制，未随本仓库分发）；本版重写为资产驱动。
 
 完整第三方声明见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
