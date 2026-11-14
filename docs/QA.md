@@ -1,6 +1,6 @@
 # QA / 验证记录
 
-日期：2026-11-04 · 版本：1.0.8 · 引擎：Godot 4.7.2 stable
+日期：2026-11-14 · 版本：1.0.9 · 引擎：Godot 4.7.2 stable
 环境：Linux x86_64 · Godot headless + Xvfb/llvmpipe · JDK 17 (Temurin 17.0.21) · Android SDK build-tools 35 / platform 35
 
 ---
@@ -11,17 +11,17 @@
 godot --headless --path . -- --selftest
 ```
 
-完整输出：`docs/selftest_output.txt`（131 项断言 + 机器人明细）。
+完整输出：`docs/selftest_output.txt`（140 项断言 + 机器人明细）。
 
 ```
-RESULT: 131 checks, 0 failed
+RESULT: 140 checks, 0 failed
 ```
 
 **导出包内自测**（同一套脚本，从内嵌 PCK 运行）：
 
 ```bash
 ./build/linux/EscapeGravity.x86_64 --headless -- --selftest
-# RESULT: 131 checks, 0 failed
+# RESULT: 140 checks, 0 failed
 ```
 
 覆盖面：
@@ -37,7 +37,8 @@ RESULT: 131 checks, 0 failed
 - 出生区：开局生成路线首段安全区（与首个敌人保持 1220px 间距）；首个敌人与商店按路线生成；离开安全区 10s 后按路线预置点刷新
 - 商店绑定：未进商店却击败商店所在路线段的敌人后，信标自动重定位到下一段并绑定新深度
 - 发现：敌人未进屏前不可见、不进雷达/方位/血条、仇恨范围外不开火；玩家进入 2100px 后主动逼近并持续开火；未发现时导弹从屏幕外生成、以切线弧线切入、方向 72% 偏向敌人 ±57°，偷袭弹单独上限 2 且不占直射名额；进屏同一帧 `discovered` 并淡入
-- 物品/升级：2 格、满栏销毁、5 格上限后无栏位卡、技能满后无新技能卡
+- 物品/升级：2 格、满栏销毁、5 格上限后无栏位卡、技能满后无新技能卡；游玩中升级只累积 `pending_levels`、不弹面板，进入安全区才开面板，停靠期间新攒的等级立即补开
+- 撞击：撞敌人为同速天体的 1.5 倍、伤害随速度升高、撞敌人与撞天体单次都封顶 5、法线速度低于 40 不掉护盾
 - 技能：脉冲 10 燃料 / 200 冲量 / 脱锁 / 5s CD / 按移动方向左右偏转（静止按面向）；诱饵抵达脱锁；干扰弹偏转
 - 死亡：燃料耗尽 12s 判负、导弹 25 击穿 20 护盾、复活币恢复 8
 - 地图：隐藏路线不回头（每段沿主方向前进）、每段经过天体引力圈、42% 尝试把天体放进两个敌人之间的空白路径且避开安全区/商店/敌人、两个敌人之间必有安全区、安全区离两侧敌人≥1150 且刷新时避开当前敌人、商店比安全区离路线更远；初始安全区/商店/敌人按路线落位；敌人按路线顺序刷新
@@ -65,7 +66,7 @@ RESULT: 131 checks, 0 failed
 
 ## 2. 导出包验证
 
-> 本次 1.0.8 重新导出并验证了 Linux / Windows / Android 三个包，`dist/` 同步重打，交付物表与 SHA256SUMS 均为本批产物。
+> 本次 1.0.9 重新导出并验证了 Linux / Windows / Android 三个包，`dist/` 同步重打，交付物表与 SHA256SUMS 均为本批产物。
 
 ### 2.1 Linux（验证打包完整性）
 
@@ -76,7 +77,7 @@ xvfb-run -a -s "-screen 0 1280x720x24" \
 
 - 退出码 0；11 张截图全部生成（**由导出包运行产生，不是编辑器**），已复制到 `docs/shots/`。
 - 标题、中文字体、贴图、音频、脚本均从内嵌 PCK 加载；无缺失贴图警告。
-- `build/linux/EscapeGravity.x86_64` = 96,352,448 bytes，ELF x86-64。
+- `build/linux/EscapeGravity.x86_64` = 96,355,808 bytes，ELF x86-64。
 - 触屏 20:9 截图另用 `--resolution 2400x1080 -- --touch --shots=...` 生成，取 `04_battle` 作为 `docs/shots/12_touch.png`。
 
 ### 2.2 Windows
@@ -87,7 +88,7 @@ file build/windows/EscapeGravity.exe
 python3 -c "d=open(...).read(); print(b'GDPC' in d[-4096:])"   # True
 ```
 
-- 单文件、内嵌 PCK，无外部依赖；132,036,496 bytes。
+- 单文件、内嵌 PCK，无外部依赖；132,039,856 bytes。
 - 未做商业代码签名（没有证书），首次运行会有 SmartScreen 提示。
 
 ### 2.3 Android
@@ -98,7 +99,7 @@ apksigner verify --verbose --print-certs build/android/EscapeGravity.apk
 ```
 
 ```
-package: name='com.escapegravity.game' versionCode='11' versionName='1.0.8'
+package: name='com.escapegravity.game' versionCode='12' versionName='1.0.9'
 minSdkVersion:'24'
 targetSdkVersion:'36'
 native-code: 'arm64-v8a'
@@ -111,16 +112,18 @@ Signer #1 certificate DN: CN=Escape Gravity, OU=Games, O=Escape Gravity, L=Shang
 Signer #1 certificate SHA-256: ddd8a610132d862301c8987f18f545a6eefdf58f0617547d7fad3cec0113f5ff
 ```
 
-- APK：49,562,872 bytes；含全部 `assets/`（贴图、字体、WAV、脚本 `.gdc`、场景）。
+- APK：49,566,968 bytes；含全部 `assets/`（贴图、字体、WAV、脚本 `.gdc`、场景）。
 - 权限：无危险权限（只有 Godot/模板默认项）。
 - 未在真机运行（本机无 Android 设备）；静态检查 + 签名验证通过，Linux 导出包已验证同一 PCK 的运行时行为。
 
 ### 2.4 OpenList 分发
 
-- 已上传 `dist/EscapeGravity-1.0.8-android-arm64.apk` 到 NAS 的 `/vol1/1000/MyFiles/Public/`。
-- 远端大小 49,562,872 bytes、SHA-256 `5605b3fe…72f4ad7c`，与本地一致。
-- 直链 HEAD 返回 `200 application/vnd.android.package-archive`，`content-length=49562872`：
-  <https://files.thisisxd.top/d/EscapeGravity-1.0.8-android-arm64.apk?v=11>
+- 已上传到 NAS 的 `/vol1/1000/MyFiles/Public/`：
+  - `dist/EscapeGravity-1.0.9-windows-x86_64.zip`：60,168,030 bytes，SHA-256 `b32f54b4…f3cd5f73`
+  - `dist/EscapeGravity-1.0.9-android-arm64.apk`：49,566,968 bytes，SHA-256 `0cbaeea9…db305cc3`
+- 远端 `sha256sum` 与本地逐字节一致；直链 HEAD 均返回 `200` 且 `content-length` 与本地一致（zip `application/zip`，apk `application/vnd.android.package-archive`）：
+  - Windows：<https://files.thisisxd.top/d/EscapeGravity-1.0.9-windows-x86_64.zip>
+  - Android：<https://files.thisisxd.top/d/EscapeGravity-1.0.9-android-arm64.apk>
 
 ---
 

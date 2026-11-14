@@ -1,4 +1,4 @@
-# Escape Gravity · 1.0.8 发行版
+# Escape Gravity · 1.0.9 发行版
 
 > 2D 俯视角 · 物理驱动 · 无直接攻击的太空肉鸽
 >
@@ -14,6 +14,11 @@
 - 中文字体：WenQuanYi Zen Hei（随包分发，见许可）
 
 > **仓库状态**：本目录为本地 Git 仓库（`main`，未配置 remote，暂未发布）。`build/`、`dist/`、`keystore/` 与 `.godot/` 不入库；维护、构建与提交约定见 [`AGENTS.md`](AGENTS.md)。
+
+### 1.0.9 更新
+
+- **升级挪进安全区**：游玩途中打满经验槽不再弹出升级框，只累积“待升级”次数（HUD 会提示 `待升级 ×N · 进入安全区强化`）；进入安全区后一次结算，攒了几级就连着选几张。安全区内继续吸收物质攒出的新等级会立刻补开面板。这样战斗中途不会被打断，升级也变成“活着到达安全区”的奖励。
+- **撞击伤害改为按速度计算**：撞上敌舰或天体时，护盾磨损由撞击瞬间**沿法线的速度**决定（**40 px/s** 起算，**380 px/s** 到顶，基础 **0.5~5**）；**撞敌人 ×1.5**，但撞敌人和撞天体**单次最高都是 5**。贴着表面擦过几乎不掉血，正面高速撞上去才疼。护盾 20 至少能扛 4 次满额撞击。
 
 ### 1.0.8 更新
 
@@ -66,24 +71,25 @@
 
 | 文件 | 平台 | 大小 | SHA-256 |
 |---|---|---|---|
-| `dist/EscapeGravity-1.0.8-windows-x86_64.zip` | Windows 10/11 x64 | 57.4 MiB | `9789ee41…bf8009e9` |
-| `dist/EscapeGravity-1.0.8-android-arm64.apk` | Android 7.0+ arm64 | 47.3 MiB | `5605b3fe…72f4ad7c` |
-| `dist/EscapeGravity-1.0.8-linux-x86_64.tar.gz` | Linux x64（附带） | 48.2 MiB | `a08a0d46…c6e69ef2` |
-| `build/windows/EscapeGravity.exe` | 未压缩的 Windows 单文件 | 125.9 MiB | `bad15b18…152ca24e` |
-| `build/android/EscapeGravity.apk` | 未重命名的 Android 包 | 47.3 MiB | `5605b3fe…72f4ad7c` |
+| `dist/EscapeGravity-1.0.9-windows-x86_64.zip` | Windows 10/11 x64 | 57.4 MiB | `b32f54b4…f3cd5f73` |
+| `dist/EscapeGravity-1.0.9-android-arm64.apk` | Android 7.0+ arm64 | 47.3 MiB | `0cbaeea9…db305cc3` |
+| `dist/EscapeGravity-1.0.9-linux-x86_64.tar.gz` | Linux x64（附带） | 48.2 MiB | `eae39594…f4980054` |
+| `build/windows/EscapeGravity.exe` | 未压缩的 Windows 单文件 | 125.9 MiB | `9d77ec22…9d6830f4` |
+| `build/android/EscapeGravity.apk` | 未重命名的 Android 包 | 47.3 MiB | `0cbaeea9…db305cc3` |
 | `docs/shots/*.png` | 由**导出包**实际运行的截图 | — | — |
 
 完整校验和：`dist/SHA256SUMS.txt`。
 
-- Android 1.0.8 直链：[EscapeGravity-1.0.8-android-arm64.apk](https://files.thisisxd.top/d/EscapeGravity-1.0.8-android-arm64.apk?v=11)
+- Windows 1.0.9 直链：[EscapeGravity-1.0.9-windows-x86_64.zip](https://files.thisisxd.top/d/EscapeGravity-1.0.9-windows-x86_64.zip)
+- Android 1.0.9 直链：[EscapeGravity-1.0.9-android-arm64.apk](https://files.thisisxd.top/d/EscapeGravity-1.0.9-android-arm64.apk)
 
-> 下表是本次 1.0.8 重新构建的交付包，`build/` 与 `dist/` 均来自同一次构建。
+> 下表是本次 1.0.9 重新构建的交付包，`build/` 与 `dist/` 均来自同一次构建。
 
 Windows 包为单文件 exe（内嵌 PCK），解压即玩，无需安装。Android 包已用项目自带密钥签名（v2/v3），可直接侧载安装。
 
 本版不再提供 Web 试玩包；正式交付为 Windows / Android 原生构建。
 
-- Android 包名：`com.escapegravity.game`，versionCode 11，versionName 1.0.8
+- Android 包名：`com.escapegravity.game`，versionCode 12，versionName 1.0.9
 - minSdk 24 / targetSdk 36（Godot 4.7 模板），仅 arm64-v8a
 - Windows 构建未做商业代码签名：首次运行可能出现 SmartScreen 提示，选择“仍要运行”即可
 
@@ -114,7 +120,7 @@ Windows 包为单文件 exe（内嵌 PCK），解压即玩，无需安装。Andr
 1. 星域里潜伏着一台比屏幕还大的**炮塔**。它在进入你的屏幕前不会显示位置，也不会出现在雷达上；你靠近后它开始逼近，同时从屏幕外发射绕弧切入的导弹——导弹的射入方向通常偏向它所在的一侧。导弹锁定你 **5 秒**后脱锁，之后只能直线飞行，而且从出膛到自毁都持续受天体引力影响。
 2. 你打不到炮塔。唯一能伤到它的，是**它自己的导弹**：贴着炮塔绕圈，让导弹的转弯弧线切进外壳；或者用脉冲把导弹沿切线甩进外壳。
 3. 导弹撞上炮塔：**25 点伤害** + 炮塔过载停火 2.5 秒；炮塔血量 50，两发即可摧毁。
-4. 炮塔爆炸后掉落大量**物质**，正常接近会自动吸收并填经验槽。每 **20 XP** 升一级，三选一强化。即使你以高速从物质旁掠过或正在远离，牵引场也会追上并把它吸收，不会再出现物质被甩飞的情况。
+4. 炮塔爆炸后掉落大量**物质**，正常接近会自动吸收并填经验槽。每 **20 XP** 升一级，但**升级只在安全区结算**：游玩途中只累积次数（HUD 提示 `待升级 ×N`），进站后一次三选一，攒了几级就连着选几张。即使你以高速从物质旁掠过或正在远离，牵引场也会追上并把它吸收，不会再出现物质被甩飞的情况。
 5. 燃料有限，但**开局前方就有一个安全区**（绿色方位标记）；进入后会补满燃料并清除威胁，离开 10 秒后刷新下一个。**安全区**会补满燃料、清除导弹与陨石、屏蔽雷达与威胁指示；它刷新时只是一个比飞船略大的小环，飞到中心才扩张成完整的补给圈。即使高速切线掠过、从边缘滑过，安全区也会持续牵引并拖慢你，把你拉回 R280 内停靠，不再会被甩飞；明确朝圈外推进时可以脱离。**商店**用代币换道具；如果跳过商店并击败它所在路段的敌人，信标会自动重新定位。地图生成时会沿一条隐藏路线预置它们的位置：安全区在两个敌人之间，商店离路线更远；路线本身不显示给玩家。两个敌人之间的空白路径有时会生成一颗小**加速天体**，可以借它做切线环绕。
 6. 摧毁一个攻击者后进入 **8 秒安全时间**，随后按路线顺序刷新更强的敌人；深度递增。
 
@@ -161,7 +167,7 @@ Windows 包为单文件 exe（内嵌 PCK），解压即玩，无需安装。Andr
 | 导弹撞敌人：25 伤害 + 过载 2.5s + 停火 | `run.damage_enemy` / `enemy.take_hit` |
 | 导弹入场：视野外垂直进入；视野内从敌人外壳炮口发射 | `enemy._fire_one`；视野内炮塔选最近的三个炮口之一、巢用前向口；视野外保持 820px 侧向进入 |
 | 陨石：10s/颗、R17、110~210 速度、镜头外 900 进入、方向避开炮塔、受天体与飞船引力、0.5 伤害、撞飞后对敌人 5 伤害 | `src/meteor.gd` + `run`；撞飞船不会立刻消失，可继续飞行撞敌人 |
-| 物质：200/星域、吸取 260、小 1 XP / 大 3 XP、每 20 XP 升级；靠近即吸收 | `src/matter.gd`；牵引速度上限 1200、5s 牵引锁定、40px 拾取；初始与补充刷在未探索区，总数上限 280 |
+| 物质：200/星域、吸取 260、小 1 XP / 大 3 XP、每 20 XP 升级（只在安全区结算）；靠近即吸收 | `src/matter.gd`；牵引速度上限 1200、5s 牵引锁定、40px 拾取；初始与补充刷在未探索区，总数上限 280 |
 | 护盾 20 / 敌方导弹 25；陨石 0.5 | `src/ship.gd` + `run.hurt_ship` |
 | 出生区：开局生成第一个安全区，首个攻击者仍在路线首段 | `run._initial_spawn`：先建安全区，再生成敌人，最后放商店；首个安全区与敌人保持 1220px 间距，离开后 10 秒刷新下一个 |
 | 安全区：进入前 R78 → 进入时扩张到 R280、向心牵引、回满燃料/清导弹/清陨石/隐藏雷达与威胁指示、离开后 10s 刷新 | `src/zone.gd` + `run._zone_checks`；进入瞬间触发半径即为 280；影响圈内用目标速度把飞船拉向圆心并压掉切向速度，高速掠过也会被吸回；进入后 1400 px/s² 停靠，圈内抵消天体引力 |
@@ -171,7 +177,7 @@ Windows 包为单文件 exe（内嵌 PCK），解压即玩，无需安装。Andr
 | 商店自动重定位 | 跳过商店并击败所属敌人（`depth > shop_bound_depth`）时，`_maybe_refresh_shop` 在下一个路线商店点重新生成 |
 | 燃料耗尽：仍可惯性/引力移动；屏幕内有安全区则被吸入；否则 12s 后结束 | `run._check_fuel` + `assist_accel` |
 | 操作辅助装置：绕天体切线加速、商店/安全区停靠、燃料 0.4/s、不改变朝向 | `run.assist_accel`；环绕加速在 600 速度处淡出，安全区反推上限 1400 px/s² |
-| 碰撞：玩家不能进入天体/敌人、被弹飞、按速度 3~7 护盾磨损 | `ship.bounce_from` + `run`；0.35s 受击无敌帧避免连续扣血 |
+| 碰撞：玩家不能进入天体/敌人、被弹飞；护盾磨损按撞击法线速度 0.5~5，撞敌人 ×1.5、单次最高 5 | `ship.bounce_from` + `run.collision_damage`；40~380 px/s 线性映射；0.35s 受击无敌帧避免连续扣血 |
 | 物品栏：基础 2、最多 5、满了要销毁一件 | `run.add_item` / `destroy_and_take` + HUD 销毁面板 |
 | 升级池：修复 25%/100%、燃料 25%/上限 +10/+20、物品栏、代币 1/2/3、加力槽 +10%、加力推力 +7%、道具、技能 | `src/defs.gd`；上限后对应卡不再出现 |
 | 代币：击败非小型敌人 25% 掉落；狂暴（在视野内）击败必掉 | `run.kill_enemy`；精英必掉 |
@@ -246,7 +252,7 @@ escape-gravity-release/
 │   ├── meteor.gd / matter.gd / zone.gd / decoy.gd / anchor.gd / fx.gd
 │   ├── assets.gd / audio.gd / store.gd / controls.gd
 │   ├── backdrop.gd           # 视差星云/星点
-│   └── selftest.gd           # 131 项无头断言 + 机器人可玩性验证
+│   └── selftest.gd           # 140 项无头断言 + 机器人可玩性验证
 ├── assets/                   # world / ui / audio / fonts
 ├── tools/                    # 素材生成、后期、构建、打包
 ├── docs/                     # ART.md / DESIGN_MAP.md / QA.md / 资产清单 / 截图
@@ -266,16 +272,16 @@ escape-gravity-release/
 
 ## 5. 验证
 
-### 5.1 无头断言（131/131 通过）
+### 5.1 无头断言（140/140 通过）
 
 ```bash
 godot --headless --path . -- --selftest
-# RESULT: 131 checks, 0 failed
+# RESULT: 140 checks, 0 failed
 ```
 
 覆盖：太空无阻力与惯性保持 / 引擎极速 150、加力 3× 与 192、外部上限 720 / 燃料按实际 Δv（滑行免费，到极速后按住推进不耗油）/ 加力槽 6.6s 与推进中回充 / 引力 285·395·3R 截止 /
 辅助装置平衡恒星引力 / 锁定中的导弹仍受引力弯折 /
-导弹 150·0.525·5s 脱锁 / 命中 25 与过载 / 陨石 0.5 与撞飞 5 / 物质 240 与 1·3 XP / 高速远离仍被追上吸收 / 20 XP 升级 /
+导弹 150·0.525·5s 脱锁 / 命中 25 与过载 / 陨石 0.5 与撞飞 5 / 物质 260 与 1·3 XP / 高速远离仍被追上吸收 / 20 XP 升级（游玩中只累积，进安全区才弹卡） / 撞击伤害按速度·撞敌人×1.5·单次最高 5 /
 安全区 78→280 扩张·补满·清弹·隐藏·10s 刷新 / 高速切线掠过仍被吸入·径向高速仍能停靠 / 商店 3 件且不回燃料·跨过所属敌人后自动重定位 / 开局安全区 / 物品栏 2→5 与满栏销毁 / 脉冲 10 燃料·200 冲量·5s CD·按移动方向左右偏转 /
 诱饵抵达脱锁 / 干扰弹偏转 / 燃料 12s 判负 / 复活币 / 路线不回头·商店更远·每段有天体·两个敌人间有安全区·安全区离敌人≥1150 / 空白路径加速天体数量与间距 /
 敌人未发现时不可见、仇恨范围外不开火、靠近后逼近 / 未发现时仍开火且导弹从屏幕外弧线切入·方向偏向敌人·单独上限 2 / 进屏即发现并淡入 /
@@ -296,11 +302,11 @@ godot --headless --path . -- --selftest
 
 ### 5.3 导出包验证
 
-> 本次 1.0.8 重新导出了 Linux / Windows / Android 包并重打了 `dist/`，下方验证均针对这批产物。
+> 本次 1.0.9 重新导出了 Linux / Windows / Android 包并重打了 `dist/`，下方验证均针对这批产物。
 
 - Linux 导出包在 `Xvfb + llvmpipe` 下真实运行并重新生成全部 11 张截图（不是编辑器截图），中文字体、脚本、贴图、音频均从 PCK 加载。
 - Windows 产物：`PE32+ executable (GUI), x86-64`，尾部 `GDPC` 内嵌包标记，单文件无外部依赖。
-- Android：`apksigner verify` 通过（v2 + v3 签名）；`aapt2 dump badging` 显示 `com.escapegravity.game`、1.0.8（versionCode 11）、
+- Android：`apksigner verify` 通过（v2 + v3 签名）；`aapt2 dump badging` 显示 `com.escapegravity.game`、1.0.9（versionCode 12）、
   minSdk 24、targetSdk 36、`native-code: arm64-v8a`、landscape、无危险权限；APK 内含全部贴图/字体/音频/脚本。
 
 ### 5.4 界面
@@ -333,7 +339,7 @@ godot --headless --path . -- --selftest
 9. **美术/音频为程序化生成的预渲染占位素材**：已按可替换资产管线实现，后续换图不需要改逻辑。
 10. **Android 仅 arm64**，且没有真机实测（本机无 Android 设备；APK 已做静态与签名验证，Linux 导出包做了真实运行验证）。
 11. 安全区/商店刷新距离、商店重开时间（26s）等文档未给定的细节由本实现确定，见 `DESIGN_MAP.md`。
-12. 1.0.8 从 1.0.5 基线重做：物质磁吸捕获、安全区捕获井、商店随战线重定位、空白路径加速天体。数值集中在 `src/consts.gd`，四项行为都有自测覆盖；开局安全区沿用 1.0.5 的路线首段预置。
+12. 1.0.9 在 1.0.8 基础上把升级挪进安全区、撞击伤害改为按速度计算；1.0.8 则是从 1.0.5 基线重做：物质磁吸捕获、安全区捕获井、商店随战线重定位、空白路径加速天体。数值集中在 `src/consts.gd`，这些行为都有自测覆盖。
 
 ---
 

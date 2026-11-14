@@ -48,6 +48,15 @@ PASS  260 吸取半径：300 外不吸引   d0=300 d1=300
 PASS  260 吸取半径：150 内被吸引   n0=150 n1=10
 PASS  高速远离时物质仍会追上并被吸收（不会被甩飞）   xp=3 d=420
 PASS  每 20 XP 升级
+PASS  撞敌人：150 速度扣 1.5 倍伤害   dmg=2.93 shield=17.07
+PASS  撞天体：伤害随速度且低于撞敌人   dmg=1.96
+PASS  撞击伤害随速度升高   80=1.03 720=5.00
+PASS  撞击伤害最高 5（敌人与天体同顶）
+PASS  擦边（低于 40）不掉护盾
+PASS  游玩中升级只累积、不弹面板   state=0 pending=1 lv=2
+PASS  进入安全区才打开升级面板   state=1 cards=3
+PASS  选完升级回到游玩
+PASS  安全区内升级立即弹面板
 PASS  安全区进入前只比飞船大一点   r=78
 PASS  安全区贴图初始缩小   scale=0.28
 PASS  进入瞬间半径直接设为最大
@@ -138,4 +147,4 @@ PASS  地图生成时填充了物质   matter=150
   bot seed=302 orbit=880 invuln=true -> hp=0 hits=2 t=11.4s state=0 dmg=
 PASS  无敌机器人能靠诱导击毁炮塔（验证核心循环）   invuln kills 3/3
 PASS  普通机器人也能至少击毁一次炮塔   normal kills 1/3
-RESULT: 131 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 21.5333333333334, "state": 4 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 56.6166666666647, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 0, "time": 8.48333333333333, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 22.8666666666666, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 10.9000000000001, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": true, "hits": 2, "time": 11.3833333333335, "state": 0 }], "invuln_kills": 3, "normal_kills": 1 })
+RESULT: 140 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 21.5333333333334, "state": 4 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 56.6166666666647, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 0, "time": 8.48333333333333, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 22.8666666666666, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 10.9000000000001, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": true, "hits": 2, "time": 11.3833333333335, "state": 0 }], "invuln_kills": 3, "normal_kills": 1 })
