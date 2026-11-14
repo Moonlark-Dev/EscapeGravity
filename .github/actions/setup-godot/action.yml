@@ -1,0 +1,56 @@
+name: Setup Godot
+description: 下载并缓存 Godot 编辑器与导出模板
+
+inputs:
+  version:
+    description: Godot 版本号，例如 4.7.2
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: 缓存导出模板
+      id: templates
+      uses: actions/cache@v4
+      with:
+        path: ~/.local/share/godot/export_templates/${{ inputs.version }}.stable
+        key: godot-templates-${{ runner.os }}-${{ inputs.version }}
+
+    - name: 缓存 Godot 编辑器
+      id: editor
+      uses: actions/cache@v4
+      with:
+        path: ~/.local/bin/godot
+        key: godot-editor-${{ runner.os }}-${{ inputs.version }}
+
+    - name: 加入 PATH
+      shell: bash
+      run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: 下载 Godot 编辑器
+      if: steps.editor.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$HOME/.local/bin"
+        curl -fsSL --retry 3 --retry-all-errors -o /tmp/godot.zip \
+          "https://github.com/godotengine/godot/releases/download/${{ inputs.version }}-stable/Godot_v${{ inputs.version }}-stable_linux.x86_64.zip"
+        rm -rf /tmp/godot-editor && mkdir -p /tmp/godot-editor
+        unzip -q -o /tmp/godot.zip -d /tmp/godot-editor
+        install -m 755 "/tmp/godot-editor/Godot_v${{ inputs.version }}-stable_linux.x86_64" "$HOME/.local/bin/godot"
+
+    - name: 下载导出模板
+      if: steps.templates.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$HOME/.local/share/godot/export_templates"
+        curl -fsSL --retry 3 --retry-all-errors -o /tmp/templates.tpz \
+          "https://github.com/godotengine/godot/releases/download/${{ inputs.version }}-stable/Godot_v${{ inputs.version }}-stable_export_templates.tpz"
+        rm -rf /tmp/godot-templates && mkdir -p /tmp/godot-templates
+        unzip -q -o /tmp/templates.tpz -d /tmp/godot-templates
+        mv /tmp/godot-templates/templates "$HOME/.local/share/godot/export_templates/${{ inputs.version }}.stable"
+
+    - name: 检查版本
+      shell: bash
+      run: godot --version
