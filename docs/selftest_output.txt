@@ -95,10 +95,11 @@ PASS  视野内有安全区时不刷新无人机
 PASS  视野内有商店时不刷新无人机
 PASS  视野内无修整区时允许刷新
 PASS  无人机撞玩家造成 5 点伤害   shield=15.0
-PASS  撞玩家后被甩飞并永久脱锁
-PASS  甩飞后不会再次锁定玩家   v=820.0
-PASS  无人机小概率当场解体
-PASS  解体分支同样造成 5 点伤害   shield=15.0
+PASS  无人机撞玩家后当场解体
+PASS  近身掠过后被玩家甩开
+PASS  脱锁后不占锁定名额
+PASS  甩开后不会再次锁定玩家   v=460.0
+PASS  锁定 5 秒后自动脱锁
 PASS  无人机撞敌人造成 5 点伤害   hp=45.0
 PASS  撞敌人后无人机解体
 PASS  无人机贴到安全区本体即解体
@@ -183,4 +184,4 @@ PASS  地图生成时填充了物质   matter=150
   bot seed=302 orbit=880 invuln=true -> hp=0 hits=2 t=11.4s state=0 dmg=
 PASS  无敌机器人能靠诱导击毁炮塔（验证核心循环）   invuln kills 3/3
 PASS  普通机器人也能至少击毁一次炮塔   normal kills 1/3
-RESULT: 176 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 21.5333333333334, "state": 4 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 56.6166666666647, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 0, "time": 8.48333333333333, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 22.8666666666666, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 10.9000000000001, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": true, "hits": 2, "time": 11.3833333333335, "state": 0 }], "invuln_kills": 3, "normal_kills": 1 })
+RESULT: 177 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 21.5333333333334, "state": 4 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 56.6166666666647, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 0, "time": 8.48333333333333, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 22.8666666666666, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 10.9000000000001, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": true, "hits": 2, "time": 11.3833333333335, "state": 0 }], "invuln_kills": 3, "normal_kills": 1 })

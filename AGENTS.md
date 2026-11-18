@@ -113,7 +113,7 @@ escape-gravity-release/
 - **天体与内容双向避让**：新天体落点用 `Galaxy.body_fits()` 检查已加载天体、当前飞船、安全区/商店/敌人和**全部路线预置节点**；安全区/商店/敌人刷新用 `_clear_body_point()` 的 18 圈 × 24 方向环形搜索，安全区按完整 R280、敌人按外壳、天体按表面 + `BODY_CONTENT_MARGIN=160` 留白。别再把 `_clear_body_point` 的 clearance 传成 90/120。
 - **升级只在安全区结算**：`on_matter_collected` 打满经验只累加 `pending_levels` 并提示“待升级 ×N”，**不要**在游玩中调用 `begin_levelup`；`_enter_safe` 里才把攒下的次数逐张弹出。停靠期间继续吸物质攒出的新等级也应立刻弹面板。
 - **撞击伤害按速度**：`_resolve_collisions` 用 `ship.bounce_from()` 返回的法线冲击速度，经 `collision_damage()` 把 40~380 px/s 映射到 **0.5~5**；撞敌人 ×1.5，撞敌人与撞天体的最终值都封顶 **5**。擦边（法线速度 <40）不掉血。别退回固定 3~7 的 remap。
-- **自杀无人机（1.2.0）**：`drone.gd` 独立于 `enemies` 数组；460 px/s / 0.22 rad/s（转弯半径约 2090），撞玩家/敌人各 5 伤害。撞玩家后 80% 概率 `fling_from` 甩飞并永久脱锁（`locked=false`），20% 解体。`_update_spawns` 每 8s 成对刷新，**玩家视野内有安全区/商店时暂停**，锁定上限 6；`Drone._zone_ward` 用 320px 驱离圈推离、进入区域本体即解体；`_cast_pulse` 范围内直接解体。不要把它并进 `enemies`，否则会破坏主敌人的发现/血条/计数。
+- **自杀无人机（1.2.0）**：`drone.gd` 独立于 `enemies` 数组；460 px/s / 0.22 rad/s（转弯半径约 2090），撞玩家/敌人各 5 伤害并**当场解体**。大转弯半径下玩家靠机动甩开：锁定最多 5s，近身进入 240px 后开始远离立即 `_lose_lock`，`locked=false` 永久生效、不再追踪，残骸直线飞 8s 后消失。`_update_spawns` 每 8s 成对刷新，**玩家视野内有安全区/商店时暂停**，锁定上限 6；`Drone._zone_ward` 用 320px 驱离圈推离、进入区域本体即解体；`_cast_pulse` 范围内直接解体。不要把它并进 `enemies`，否则会破坏主敌人的发现/血条/计数。
 - **平衡**：初始燃料 **500**；推进 4/s、加力 **4.8/s（1.2×）**（均按实际 Δv），3× 推力，引擎极速 150 / 加力 192，初始槽 **6.6s**；护盾 20。
 - **状态机**：`PLAYING / LEVELUP / SHOP / DESTROY / DEAD`；暂停由 `main.gd` 控制，`run.paused` 冻结模拟。
 - **存档**：`user://escape_gravity.cfg` 只保存设置与历史记录；没有中途存档 / 云存档 / meta 解锁。
@@ -160,7 +160,7 @@ python3 tools/make_dist.py --platforms windows,linux
 
 改动运行逻辑后，至少完成：
 
-1. `RESULT: 176 checks, 0 failed`；导出包内再跑一次 `./build/linux/EscapeGravity.x86_64 --headless -- --selftest`。
+1. `RESULT: 177 checks, 0 failed`；导出包内再跑一次 `./build/linux/EscapeGravity.x86_64 --headless -- --selftest`。
 2. 用导出包重新生成截图；桌面 11 张 + 移动端 20:9 一张，检查标题居中、触屏按钮不重叠。
 3. 无运行时绘制审计（应只有 `RenderingServer.frame_post_draw` 一条命中）：
    ```bash
