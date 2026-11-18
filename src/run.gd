@@ -689,7 +689,7 @@ func _can_spawn_drones() -> bool:
 		return false
 	return drone_lock_count() < EG.DRONE_MAX_LOCKED
 
-## 只统计仍然锁定玩家的无人机。被甩飞后 locked=false，不再占用 6 个名额。
+## 只统计仍然锁定玩家的无人机。脱锁后 locked=false，不再占用 6 个名额。
 func drone_lock_count() -> int:
 	var n := 0
 	for d in drones:
@@ -704,7 +704,7 @@ func spawn_drone(pos: Vector2, heading: float) -> Drone:
 	d.vel = Vector2.RIGHT.rotated(heading) * d.speed
 	world.add_child(d)
 	drones.append(d)
-	Fx.sparks(fx_layer, pos, Color(1.0, 0.5, 0.2, 0.9), 6, 130.0)
+	Fx.sparks(fx_layer, pos, Color(0.72, 0.44, 1.0, 0.9), 6, 130.0)
 	return d
 
 func _spawn_drone_pair() -> void:
@@ -832,24 +832,16 @@ func _resolve_collisions() -> void:
 				hurt_ship(dmg2, "外壳")
 				Fx.sparks(fx_layer, ship.position, Color(1.0, 0.5, 0.35, 0.8), 8, 120.0)
 
-	# 自杀无人机：撞玩家 5 点伤害，大概率被甩飞并永久脱锁；撞敌人 5 点伤害
-	# 后当场解体。无人机不占敌人生成位，也不产生物质/代币奖励。
+	# 自杀无人机：撞玩家或敌人各 5 点伤害，撞击瞬间解体；不占敌人生成位，
+	# 也不产生物质/代币奖励。玩家靠机动甩开的部分在 Drone.step 里处理。
 	for d in drones.duplicate():
-		if d == null or not is_instance_valid(d) or d.dead or d.hit_cd > 0.0:
+		if d == null or not is_instance_valid(d) or d.dead:
 			continue
 		if d.position.distance_to(ship.position) < d.radius + ship.R:
-			var away: Vector2 = d.position - ship.position
-			if away.length() < 1.0:
-				away = -d.vel.normalized() if d.vel.length() > 1.0 else Vector2.RIGHT
-			away = away.normalized()
-			d.position = ship.position + away * (d.radius + ship.R + 6.0)
 			hurt_ship(EG.DRONE_DMG, "无人机")
-			Fx.sparks(fx_layer, d.position, Color(1.0, 0.55, 0.3, 0.9), 8, 150.0)
+			Fx.sparks(fx_layer, d.position, Color(1.0, 0.42, 0.82, 0.9), 8, 150.0)
 			shake = maxf(shake, 0.3)
-			if rng.randf() < d.deflect_chance:
-				d.fling_from(ship)
-			else:
-				remove_drone(d, true)
+			remove_drone(d, true)
 	for d in drones.duplicate():
 		if d == null or not is_instance_valid(d) or d.dead:
 			continue

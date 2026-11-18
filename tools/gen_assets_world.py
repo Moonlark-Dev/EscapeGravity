@@ -848,43 +848,53 @@ def build_missile():
 def build_drone():
     w = h = 64
     cx = cy = 32.0
-    # Small delta-wing kamikaze drone, nose pointing +X.
-    verts = [(55, 32), (45, 25), (30, 22), (19, 26), (13, 32), (19, 38), (30, 42), (45, 39)]
-    fin_t = [(30, 24), (41, 17), (44, 24)]
-    fin_b = [(30, 40), (41, 47), (44, 40)]
+    # Small violet interceptor drone, nose pointing +X.  The wide swept prongs
+    # and magenta wings keep the silhouette distinct from the orange missile.
+    body = [(56, 32), (44, 25), (32, 23), (22, 27), (16, 32), (22, 37), (32, 41), (44, 39)]
+    wing_t = [(36, 24), (17, 11), (27, 27)]
+    wing_b = [(36, 40), (17, 53), (27, 37)]
+
+    def shape(xx, yy):
+        m = aa(sd_poly(xx, yy, body))
+        m = np.maximum(m, aa(sd_poly(xx, yy, wing_t)))
+        m = np.maximum(m, aa(sd_poly(xx, yy, wing_b)))
+        return m
 
     def fn(xx, yy):
         b = Block(xx.shape)
-        d = sd_poly(xx, yy, verts)
-        body = aa(d)
+        b.over(aa(sd_poly(xx, yy, wing_t)), C("FF3D81"), 0.95)
+        b.over(aa(sd_poly(xx, yy, wing_b)), C("B01E58"), 0.95)
+        b.over(aa(sd_poly(xx, yy, body)), C("2A0C4A"))
+        hull = aa(sd_poly(xx, yy, body))
         t = clamp01((yy - 20.0) / 24.0)
-        b.over_grad(body, C("FF6A2A"), C("7A1B0A"), t)
-        b.over(aa(sd_poly(xx, yy, fin_t)), C("C23A14"), 0.95)
-        b.over(aa(sd_poly(xx, yy, fin_b)), C("8E240C"), 0.95)
-        # spine + panel lines
-        b.over(aa(sd_seg(xx, yy, 17.0, cy, 52.0, cy, 2.0)), C("FFD08A"), 0.55)
-        b.over(aa(sd_seg(xx, yy, 24.0, 26.0, 38.0, 26.0, 0.5)), C("FFB347"), 0.35)
-        b.over(aa(sd_seg(xx, yy, 24.0, 38.0, 38.0, 38.0, 0.5)), C("FFB347"), 0.35)
-        # sensor eye near the nose
-        eye = sd_circle(xx, yy, 44.0, cy, 5.0)
-        b.over(aa(eye), C("2A0502"))
-        b.over(aa(eye - 1.5), MAGENTA)
-        b.over(np.exp(-((eye + 0.4) / 1.2) ** 2.0), C("FFD9E8"), 0.9)
-        # nozzle + short tail flame
-        b.over(aa(sd_box(xx, yy, 14.0, cy, 2.0, 5.0, 1.0)), C("1A0500"))
-        fl = np.exp(-(((xx - 10.5) / 2.8) ** 2 + ((yy - cy) / 2.6) ** 2))
-        b.add(clamp01(fl * 1.4), AMBER, 1.0)
-        b.over(clamp01(fl * 1.2), C("FFF1C8"), 0.6)
-        b.add(clamp01(body * 0.22), MAGENTA, 0.5)
+        b.over_grad(hull, C("C08BFF"), C("3D1A6E"), t)
+        # bright spine + panel seams
+        b.over(aa(sd_seg(xx, yy, 19.0, cy, 51.0, cy, 1.8)), C("F0E4FF"), 0.6)
+        b.over(aa(sd_seg(xx, yy, 25.0, 27.0, 39.0, 27.0, 0.5)), C("FF7AB8"), 0.35)
+        b.over(aa(sd_seg(xx, yy, 25.0, 37.0, 39.0, 37.0, 0.5)), C("FF7AB8"), 0.35)
+        # wing edge highlights
+        b.over(aa(sd_seg(xx, yy, 18.0, 13.0, 35.0, 25.0, 1.0)), C("FF9AC8"), 0.85)
+        b.over(aa(sd_seg(xx, yy, 18.0, 51.0, 35.0, 39.0, 1.0)), C("FF5A9E"), 0.75)
+        # sensor eye: magenta ring + white-hot core
+        eye = sd_circle(xx, yy, 44.0, cy, 5.4)
+        b.over(aa(eye), C("2A0520"))
+        b.over(aa(eye - 1.8), MAGENTA)
+        b.over(np.exp(-((eye + 0.4) / 1.3) ** 2.0), C("FFF0F8"), 0.95)
+        # single nozzle + short violet tail flame
+        b.over(aa(sd_box(xx, yy, 17.0, cy, 2.0, 4.2, 1.0)), C("14041F"))
+        fl = np.exp(-(((xx - 11.5) / 2.8) ** 2 + ((yy - cy) / 2.5) ** 2))
+        b.add(clamp01(fl * 1.4), MAGENTA, 1.0)
+        b.over(clamp01(fl * 1.2), C("FFF0F8"), 0.6)
+        b.add(clamp01(shape(xx, yy) * 0.22), PURPLE, 0.5)
         return b.to_array()
 
     def gmask(xx, yy):
-        return aa(sd_poly(xx, yy, verts))
+        return shape(xx, yy)
 
     def solid(xx, yy):
-        return aa(sd_poly(xx, yy, verts))
+        return shape(xx, yy)
 
-    img = make(w, h, fn, glows=[(gmask, 2.5, AMBER, 1.0, solid)])
+    img = make(w, h, fn, glows=[(gmask, 3.0, PURPLE, 1.0, solid)])
     return save(finish(img, w, h), "drone.png", w, h)
 
 

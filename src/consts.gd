@@ -103,8 +103,8 @@ const PLACE_SEARCH_RINGS := 18       # 18 x 24 candidate ring around a planned p
 
 # ---- Suicide drone ----
 ## 小型高速自杀无人机：速度远高于飞船引擎极速，转向率却很低，转弯半径约
-## 460 / 0.22 ≈ 2090 px。撞到玩家/敌人各造成 5 点伤害；撞玩家时大概率被
-## 甩飞并永久脱锁，只有小概率当场解体。
+## 460 / 0.22 ≈ 2090 px。撞到玩家/敌人各造成 5 点伤害并当场解体；锁定最多
+## 持续 5s，近身掠过后开始远离即视为被玩家甩开，永久脱锁。
 const DRONE_SPEED := 460.0
 const DRONE_TURN := 0.22             # rad/s, very wide arc
 const DRONE_RADIUS := 18.0
@@ -113,9 +113,9 @@ const DRONE_MAX_LOCKED := 6
 const DRONE_PAIR := 2
 const DRONE_INTERVAL := 8.0
 const DRONE_RETRY := 1.0             # re-check while a zone is in view / at cap
-const DRONE_DEFLECT_CHANCE := 0.8    # 被玩家撞到后甩飞的概率
-const DRONE_FLUNG_SPEED := 820.0
-const DRONE_FLUNG_LIFE := 8.0
+const DRONE_LOCK_TIME := 5.0         # 锁定上限；超时即被甩开，不再重锁
+const DRONE_LOSE_DIST := 240.0       # 近身掠过并开始远离的判定距离
+const DRONE_DRIFT_LIFE := 8.0        # 脱锁后直线残骸的存活时间
 const DRONE_ZONE_WARD := 320.0       # 安全区/商店的驱离圈（在完整半径之外）
 const DRONE_SPAWN_EDGE_MIN := 160.0
 const DRONE_SPAWN_EDGE_MAX := 360.0

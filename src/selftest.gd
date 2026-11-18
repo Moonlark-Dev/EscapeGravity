@@ -734,40 +734,44 @@ func _test_drones() -> void:
 	sz.remove()
 	_check("视野内无修整区时允许刷新", r._can_spawn_drones())
 
-	# 撞玩家：5 点伤害；强制 100% 甩飞，验证永久脱锁。
+	# 撞玩家：5 点伤害，撞击瞬间解体（不会被弹开）。
 	r.ship.shield = EG.SHIP_SHIELD_MAX
 	r.ship.invuln = 0.0
 	var d1 := _make_drone(r, r.ship.position + Vector2(30, 0), PI)
-	d1.deflect_chance = 1.0
 	r._resolve_collisions()
 	_check("无人机撞玩家造成 5 点伤害", absf(r.ship.shield - 15.0) < 0.01,
 		"shield=%.1f" % r.ship.shield)
-	_check("撞玩家后被甩飞并永久脱锁", d1.flung and not d1.locked and not d1.dead)
-	d1.step(dt)
-	_check("甩飞后不会再次锁定玩家", d1.flung and not d1.locked and d1.vel.length() > EG.DRONE_SPEED,
-		"v=%.1f" % d1.vel.length())
-	r.remove_drone(d1, false)
+	_check("无人机撞玩家后当场解体", d1.dead and r.drones.is_empty())
 
-	# 低概率分支：当场解体。
-	r.ship.shield = EG.SHIP_SHIELD_MAX
-	r.ship.invuln = 0.0
-	var d2 := _make_drone(r, r.ship.position + Vector2(30, 0), PI)
-	d2.deflect_chance = 0.0
-	r._resolve_collisions()
-	_check("无人机小概率当场解体", d2.dead and r.drones.is_empty())
-	_check("解体分支同样造成 5 点伤害", absf(r.ship.shield - 15.0) < 0.01,
-		"shield=%.1f" % r.ship.shield)
+	# 玩家机动甩开：近身掠过后开始远离即永久脱锁，不再追回来。
+	r.ship.position = Vector2.ZERO
+	var d2 := _make_drone(r, Vector2(0, 400), -PI * 0.5)
+	for i in range(72):
+		d2.step(dt)
+	_check("近身掠过后被玩家甩开", d2.lost and not d2.locked and not d2.dead)
+	_check("脱锁后不占锁定名额", r.drone_lock_count() == 0)
+	d2.step(1.0)
+	_check("甩开后不会再次锁定玩家", d2.lost and not d2.locked,
+		"v=%.1f" % d2.vel.length())
+	r.remove_drone(d2, false)
+
+	# 没被甩开也会在 5 秒锁定上限后放弃，避免无限绕圈。
+	var d3 := _make_drone(r, Vector2(0, -3000), 0.0)
+	for i in range(306):
+		d3.step(dt)
+	_check("锁定 5 秒后自动脱锁", d3.lost and not d3.locked and not d3.dead)
+	r.remove_drone(d3, false)
 
 	# 撞敌人：造成 5 点伤害后双方结算。
 	r.ship.shield = EG.SHIP_SHIELD_MAX
 	r.ship.invuln = 0.0
 	var e := _make_enemy(r, Vector2(0, -600))
 	var hp0 := e.hp
-	var d3 := _make_drone(r, e.position, 0.0)
+	var de := _make_drone(r, e.position, 0.0)
 	r._resolve_collisions()
 	_check("无人机撞敌人造成 5 点伤害", absf(e.hp - (hp0 - EG.DRONE_DMG)) < 0.01,
 		"hp=%.1f" % e.hp)
-	_check("撞敌人后无人机解体", d3.dead)
+	_check("撞敌人后无人机解体", de.dead)
 
 	# 安全区/商店：驱离，贴到本体则解体。
 	var z2 := r.make_zone("safe", Vector2(0, -1200))
