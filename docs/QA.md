@@ -99,7 +99,8 @@ python3 -c "d=open(...).read(); print(b'GDPC' in d[-4096:])"   # True
 
 ### 2.3 Android（1.0.9 发行包记录，1.2.0 未重建）
 
-> 以下为 1.0.9 实包记录；1.2.0 的 Android 包本次未重建、未上传。1.2.0 预期 versionCode **14**（versionName `1.2.0`），当前直链与下列输出仍是 1.0.9 包（versionCode 12）。
+> 以下为 1.0.9 实包记录；1.2.0 的 Android 发行包本次未重建、未上传。1.2.0 预期 versionCode **14**（versionName `1.2.0`），当前直链与下列输出仍是 1.0.9 包（versionCode 12）。
+> CI 从本次起会额外导出 `EscapeGravity-debug.apk`（临时调试密钥签名，versionCode 14）并上传为 `EscapeGravity-android-debug` 工件；它只是测试包，不是下方用项目密钥签名的发行 APK。
 
 ```bash
 aapt2 dump badging build/android/EscapeGravity.apk

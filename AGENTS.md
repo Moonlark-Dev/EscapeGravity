@@ -16,7 +16,7 @@
 ## 发布状态
 
 - 仓库已发布：<https://github.com/Moonlark-Dev/EscapeGravity>（公开，**MIT**），`main` 已推送。
-- GitHub Actions（`.github/workflows/build.yml`）在每次 push / PR 时跑无头自测、导出 Windows/Linux 并上传工件；推送 `v*` tag 自动创建 GitHub Release。
+- GitHub Actions（`.github/workflows/build.yml`）在每次 push / PR 时跑无头自测、导出 Windows/Linux 与 Android debug 测试包并上传工件；推送 `v*` tag 自动创建 GitHub Release。
 - 未经用户明确要求，不要创建仓库、修改仓库可见性、打 tag、发 Release 或上传发行包到其他位置。
 - 用户说“暂不发布”时，只做本地提交，不要顺手推送或发 Release。
 - 本版**不提供 Web 构建**，`export_presets.cfg` 也没有 Web 预设。
@@ -40,7 +40,7 @@
 escape-gravity-release/
 ├── .github/
 │   ├── actions/setup-godot/   # 下载/缓存 Godot 与导出模板的复合 action
-│   └── workflows/build.yml    # 自测 + Windows/Linux 导出 + 工件 + Release
+│   └── workflows/build.yml    # 自测 + Windows/Linux/Android 测试包 + 工件 + Release
 ├── project.godot              # 项目配置、autoload、拉伸、ETC2/ASTC
 ├── export_presets.cfg         # Windows / Linux / Android 导出预设（不含签名口令）
 ├── LICENSE                    # MIT
@@ -169,7 +169,7 @@ python3 tools/make_dist.py --platforms windows,linux
 4. APK：`apksigner verify` 通过 v2 + v3；`aapt2 dump badging` 的包名/版本/SDK/arm64/landscape 正确；无危险权限。
 5. Windows：`file build/windows/EscapeGravity.exe` 为 PE32+ x86-64，尾部含 `GDPC` 内嵌 PCK。
 6. 同步文档：`README.md` 的版本与更新日志、`docs/DESIGN_MAP.md`、`docs/QA.md`、`docs/ART.md`（如改缩放）、`docs/selftest_output.txt`。
-7. 推送后确认 GitHub Actions 绿色，且 `escape-gravity-dist` / `EscapeGravity-windows-x86_64` / `EscapeGravity-linux-x86_64` 工件已生成。
+7. 推送后确认 GitHub Actions 绿色，且 `escape-gravity-dist` / `EscapeGravity-windows-x86_64` / `EscapeGravity-linux-x86_64` / `EscapeGravity-android-debug` 工件已生成。
 
 ## 常见任务
 

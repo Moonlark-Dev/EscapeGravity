@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 本机构建：导入、自测、Windows/Linux/Android 导出、dist 打包。
-# CI 走 .github/workflows/build.yml（只做 Windows/Linux，无需签名密钥）。
+# CI 走 .github/workflows/build.yml（Windows/Linux 发行导出 + Android debug 测试包，无需发行签名密钥）。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

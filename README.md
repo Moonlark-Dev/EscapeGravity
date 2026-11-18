@@ -88,7 +88,7 @@
 escape-gravity-release/
 ├── .github/
 │   ├── actions/setup-godot/  # 下载并缓存 Godot 与导出模板
-│   └── workflows/build.yml   # 自测 + Windows/Linux 导出 + 工件 + Release
+│   └── workflows/build.yml   # 自测 + Windows/Linux/Android 测试包 + 工件 + Release
 ├── project.godot             # 4.7 / GL Compatibility / 1280x720 / 自动加载
 ├── export_presets.cfg        # Windows / Linux / Android 导出预设（不含签名口令）
 ├── LICENSE                   # MIT
@@ -173,13 +173,14 @@ JAVA_HOME=/path/to/jdk17 godot --headless --path . --export-release "Android" bu
 
 一键脚本：`bash tools/build_all.sh`（存在 `keystore/env.sh` 时连 Android 一起构建，否则跳过 Android）。
 
-**CI**：`.github/workflows/build.yml` 在 `ubuntu-24.04` 上下载并缓存 Godot 4.7.2 与导出模板，依次执行资源导入、源码自测、Windows/Linux 导出、导出包自测、`make_dist.py --platforms windows,linux`，然后上传三个工件：
+**CI**：`.github/workflows/build.yml` 在 `ubuntu-24.04` 上下载并缓存 Godot 4.7.2 与导出模板，依次执行资源导入、源码自测、Windows/Linux 导出、Android 测试包（debug 签名）、导出包自测、`make_dist.py --platforms windows,linux`，然后上传四个工件：
 
 - `escape-gravity-dist`：Windows zip、Linux tar.gz、`SHA256SUMS.txt`
 - `EscapeGravity-windows-x86_64`：未压缩的 `EscapeGravity.exe`
 - `EscapeGravity-linux-x86_64`：未压缩的 `EscapeGravity.x86_64`
+- `EscapeGravity-android-debug`：debug 签名的 arm64 测试 APK（可直接侧载安装）
 
-推送 `v*` tag 时，`release` job 会把 `dist/*` 附到 GitHub Release。CI 不接触 Android 签名材料，APK 建议在本地用 `keystore/` 导出。
+推送 `v*` tag 时，`release` job 会把 `dist/*` 附到 GitHub Release。CI 只生成 Android **debug** 测试包（临时调试密钥），不接触发行签名材料；对外分发的 release APK 仍在本地用 `keystore/` 导出后手工附到 Release。
 
 ## 许可与致谢
 

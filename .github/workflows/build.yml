@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build:
-    name: 自测与导出（Windows / Linux）
+    name: 自测与测试版导出（Windows / Linux / Android）
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -29,6 +29,31 @@ jobs:
         uses: ./.github/actions/setup-godot
         with:
           version: ${{ env.GODOT_VERSION }}
+
+      - name: 安装 JDK 17（Android 导出）
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: 准备 Android SDK
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          if [[ -z "$SDK" || ! -d "$SDK" ]]; then
+            echo "未找到 Android SDK（ANDROID_HOME=$SDK）" >&2
+            exit 1
+          fi
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          if ! ls "$SDK"/build-tools/*/apksigner >/dev/null 2>&1; then
+            SDKMANAGER="$(find "$SDK/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -1)"
+            echo "未找到 build-tools，使用 sdkmanager 安装：$SDKMANAGER"
+            test -x "$SDKMANAGER"
+            yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+            "$SDKMANAGER" --install "build-tools;35.0.0" "platform-tools"
+          fi
+          ls -d "$SDK"/build-tools/*
 
       - name: 导入资源
         run: godot --headless --path . --import
@@ -47,6 +72,13 @@ jobs:
       - name: 导出 Linux 可执行文件
         run: godot --headless --path . --export-release "Linux (verification)" build/linux/EscapeGravity.x86_64
 
+      - name: 导出 Android 测试包（debug 签名）
+        run: |
+          set -o pipefail
+          mkdir -p build/android
+          godot --headless --path . --export-debug "Android" build/android/EscapeGravity-debug.apk 2>&1 | tee "$RUNNER_TEMP/android-export.log"
+          test -s build/android/EscapeGravity-debug.apk
+
       - name: 验证导出产物
         run: |
           set -euo pipefail
@@ -57,6 +89,25 @@ jobs:
           chmod +x build/linux/EscapeGravity.x86_64
           ./build/linux/EscapeGravity.x86_64 --headless -- --selftest | tee "$RUNNER_TEMP/selftest-export.log"
           grep -Eq "RESULT: [0-9]+ checks, 0 failed" "$RUNNER_TEMP/selftest-export.log"
+
+      - name: 验证 Android 测试包
+        run: |
+          set -euo pipefail
+          APK=build/android/EscapeGravity-debug.apk
+          BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)"
+          "${BUILD_TOOLS}apksigner" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apk-sign.txt"
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" "$RUNNER_TEMP/apk-sign.txt"
+          grep -q "Verified using v3 scheme (APK Signature Scheme v3): true" "$RUNNER_TEMP/apk-sign.txt"
+          "${BUILD_TOOLS}aapt2" dump badging "$APK" > "$RUNNER_TEMP/apk-badging.txt"
+          grep -q "package: name='com.escapegravity.game' versionCode='14' versionName='1.2.0'" "$RUNNER_TEMP/apk-badging.txt"
+          grep -q "native-code: 'arm64-v8a'" "$RUNNER_TEMP/apk-badging.txt"
+          grep -q "uses-feature: name='android.hardware.screen.landscape'" "$RUNNER_TEMP/apk-badging.txt"
+          if grep -q "^uses-permission" "$RUNNER_TEMP/apk-badging.txt"; then
+            echo "APK 中出现权限声明，请核对：" >&2
+            grep "^uses-permission" "$RUNNER_TEMP/apk-badging.txt" >&2
+            exit 1
+          fi
+          ls -l "$APK"
 
       - name: 打包 dist
         run: python3 tools/make_dist.py --platforms windows,linux
@@ -88,6 +139,14 @@ jobs:
         with:
           name: EscapeGravity-linux-x86_64
           path: build/linux/EscapeGravity.x86_64
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: 上传 Android 测试包
+        uses: actions/upload-artifact@v4
+        with:
+          name: EscapeGravity-android-debug
+          path: build/android/EscapeGravity-debug.apk
           if-no-files-found: error
           retention-days: 14
 
