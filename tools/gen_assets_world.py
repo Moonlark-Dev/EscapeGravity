@@ -845,6 +845,49 @@ def build_missile():
     return save(finish(make(w, h, fn), w, h), "missile.png", w, h)
 
 
+def build_drone():
+    w = h = 64
+    cx = cy = 32.0
+    # Small delta-wing kamikaze drone, nose pointing +X.
+    verts = [(55, 32), (45, 25), (30, 22), (19, 26), (13, 32), (19, 38), (30, 42), (45, 39)]
+    fin_t = [(30, 24), (41, 17), (44, 24)]
+    fin_b = [(30, 40), (41, 47), (44, 40)]
+
+    def fn(xx, yy):
+        b = Block(xx.shape)
+        d = sd_poly(xx, yy, verts)
+        body = aa(d)
+        t = clamp01((yy - 20.0) / 24.0)
+        b.over_grad(body, C("FF6A2A"), C("7A1B0A"), t)
+        b.over(aa(sd_poly(xx, yy, fin_t)), C("C23A14"), 0.95)
+        b.over(aa(sd_poly(xx, yy, fin_b)), C("8E240C"), 0.95)
+        # spine + panel lines
+        b.over(aa(sd_seg(xx, yy, 17.0, cy, 52.0, cy, 2.0)), C("FFD08A"), 0.55)
+        b.over(aa(sd_seg(xx, yy, 24.0, 26.0, 38.0, 26.0, 0.5)), C("FFB347"), 0.35)
+        b.over(aa(sd_seg(xx, yy, 24.0, 38.0, 38.0, 38.0, 0.5)), C("FFB347"), 0.35)
+        # sensor eye near the nose
+        eye = sd_circle(xx, yy, 44.0, cy, 5.0)
+        b.over(aa(eye), C("2A0502"))
+        b.over(aa(eye - 1.5), MAGENTA)
+        b.over(np.exp(-((eye + 0.4) / 1.2) ** 2.0), C("FFD9E8"), 0.9)
+        # nozzle + short tail flame
+        b.over(aa(sd_box(xx, yy, 14.0, cy, 2.0, 5.0, 1.0)), C("1A0500"))
+        fl = np.exp(-(((xx - 10.5) / 2.8) ** 2 + ((yy - cy) / 2.6) ** 2))
+        b.add(clamp01(fl * 1.4), AMBER, 1.0)
+        b.over(clamp01(fl * 1.2), C("FFF1C8"), 0.6)
+        b.add(clamp01(body * 0.22), MAGENTA, 0.5)
+        return b.to_array()
+
+    def gmask(xx, yy):
+        return aa(sd_poly(xx, yy, verts))
+
+    def solid(xx, yy):
+        return aa(sd_poly(xx, yy, verts))
+
+    img = make(w, h, fn, glows=[(gmask, 2.5, AMBER, 1.0, solid)])
+    return save(finish(img, w, h), "drone.png", w, h)
+
+
 # ==========================================================================
 # ship
 # ==========================================================================
@@ -2425,7 +2468,7 @@ def build_title_bg():
 EXPECTED = {
     "ship.png": (128, 128), "ship_glow.png": (160, 160), "engine_glow.png": (96, 96),
     "missile.png": (64, 28), "missile_warn.png": (96, 96), "turret.png": (1024, 1024),
-    "turret_ember.png": (768, 768), "nest.png": (256, 256),
+    "turret_ember.png": (768, 768), "nest.png": (256, 256), "drone.png": (64, 64),
     "meteor_1.png": (96, 96), "meteor_2.png": (96, 96), "meteor_3.png": (96, 96),
     "matter_small.png": (32, 32), "matter_big.png": (64, 64),
     "planet_1.png": (768, 768), "planet_2.png": (768, 768), "planet_3.png": (768, 768),
@@ -2447,7 +2490,7 @@ OPAQUE = ["title_bg.png"]
 
 GROUPS = [
     ("ship & projectiles", ["ship.png", "ship_glow.png", "engine_glow.png", "missile.png",
-                            "missile_warn.png", "nest.png"]),
+                            "missile_warn.png", "nest.png", "drone.png"]),
     ("hazards & pickups", ["meteor_1.png", "meteor_2.png", "meteor_3.png", "decoy.png",
                            "matter_small.png", "matter_big.png"]),
     ("celestial bodies", ["planet_1.png", "planet_2.png", "planet_3.png", "star.png"]),

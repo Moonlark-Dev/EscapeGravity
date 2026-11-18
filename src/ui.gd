@@ -749,6 +749,9 @@ func _refresh_radar() -> void:
 	for m in run.missiles:
 		if not m.dead:
 			targets.append({"pos": m.position, "tex": "radar_threat"})
+	for d in run.drones:
+		if is_instance_valid(d) and not d.dead:
+			targets.append({"pos": d.position, "tex": "radar_threat"})
 	if run.current_enemy != null and not run.current_enemy.dead and run.current_enemy.discovered:
 		targets.append({"pos": run.current_enemy.position, "tex": "radar_enemy"})
 	for t in targets:

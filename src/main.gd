@@ -254,6 +254,10 @@ func _run_shots(dir: String) -> void:
 		m.locked = true
 		m.lock_timer = 1.2
 		m._age = 2.0
+	# two suicide drones closing in, so the combat shot documents the new threat
+	for i in range(2):
+		var dp: Vector2 = run.ship.position + Vector2(-470.0 + 900.0 * float(i), -210.0 + 420.0 * float(i))
+		run.spawn_drone(dp, (run.ship.position - dp).angle())
 	if run.safe_zone != null:
 		run.safe_zone.position = Vector2(-1250, 620)
 	if run.shop_zone != null:

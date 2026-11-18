@@ -21,6 +21,7 @@ func run_tests() -> void:
 	_test_inventory_and_upgrades()
 	_test_skills()
 	_test_pulse_direction()
+	_test_drones()
 	_test_fuel_and_death()
 	_test_spawning()
 	_test_enemy_discovery()
@@ -67,6 +68,10 @@ func _clear_arena(r: Run) -> void:
 	for m in r.missiles.duplicate():
 		m.remove()
 	r.missiles.clear()
+	for d in r.drones.duplicate():
+		if is_instance_valid(d):
+			d.remove()
+	r.drones.clear()
 	for e in r.enemies.duplicate():
 		e.remove()
 	r.enemies.clear()
@@ -96,6 +101,15 @@ func _make_enemy(r: Run, pos: Vector2, kind: String = "turret") -> Enemy:
 	r.enemies.append(e)
 	r.current_enemy = e
 	return e
+
+func _make_drone(r: Run, pos: Vector2, heading: float = 0.0) -> Drone:
+	var d := Drone.new()
+	d.run = r
+	d.position = pos
+	d.vel = Vector2.RIGHT.rotated(heading) * d.speed
+	r.world.add_child(d)
+	r.drones.append(d)
+	return d
 
 func _test_physics() -> void:
 	var r := _new_run(101)
@@ -665,6 +679,149 @@ func _test_pulse_direction() -> void:
 	_check("脉冲：分界线随移动方向而非面向",
 		Vector2.LEFT.cross(left.vel) > 20.0 and Vector2.LEFT.cross(right.vel) < -20.0,
 		"left=(%.0f, %.0f) right=(%.0f, %.0f)" % [left.vel.x, left.vel.y, right.vel.x, right.vel.y])
+	_kill(r)
+
+func _test_drones() -> void:
+	var r := _new_run(120)
+	_clear_arena(r)
+	r.ship.position = Vector2.ZERO
+	r.ship.vel = Vector2.ZERO
+	r.ship.shield = EG.SHIP_SHIELD_MAX
+	r.camera.position = Vector2.ZERO
+	r._spawn_drone_pair()
+	_check("无人机成对刷新", r.drones.size() == EG.DRONE_PAIR, "n=%d" % r.drones.size())
+	var offscreen := true
+	for d in r.drones:
+		if r.is_on_screen(d.position, 0.0):
+			offscreen = false
+	_check("无人机在屏幕外生成并飞入", offscreen)
+	_check("锁定玩家的无人机计数为 2", r.drone_lock_count() == 2)
+	for i in range(3):
+		r._spawn_drone_pair()
+	_check("锁定玩家的无人机上限 6", r.drone_lock_count() == EG.DRONE_MAX_LOCKED and r.drones.size() == 6,
+		"locked=%d n=%d" % [r.drone_lock_count(), r.drones.size()])
+	r._spawn_drone_pair()
+	_check("满 6 后不再补充无人机", r.drones.size() == EG.DRONE_MAX_LOCKED)
+
+	# 高速 + 低转向率：一帧内只能转 DRONE_TURN*dt。
+	var d0: Drone = r.drones[0]
+	for d in r.drones.duplicate():
+		if d != d0:
+			r.remove_drone(d, false)
+	d0.position = Vector2.ZERO
+	d0.vel = Vector2.RIGHT * d0.speed
+	r.ship.position = Vector2(0, 900)
+	var a0: float = d0.vel.angle()
+	d0.step(1.0 / 60.0)
+	var turn: float = absf(wrapf(d0.vel.angle() - a0, -PI, PI))
+	_check("无人机保持高速 460", absf(d0.vel.length() - EG.DRONE_SPEED) < 1.0,
+		"v=%.1f" % d0.vel.length())
+	_check("无人机转向率很低（大转弯半径）", turn <= EG.DRONE_TURN / 60.0 + 0.001,
+		"turn=%.4f" % turn)
+	r.remove_drone(d0, false)
+
+	# 视野里有修整区时不刷新。
+	r.ship.position = Vector2.ZERO
+	var z := r.make_zone("safe", r.ship.position)
+	r.safe_zone = z
+	_check("视野内有安全区时不刷新无人机", not r._can_spawn_drones())
+	r.safe_zone = null
+	z.remove()
+	var sz := r.make_zone("shop", r.ship.position)
+	r.shop_zone = sz
+	_check("视野内有商店时不刷新无人机", not r._can_spawn_drones())
+	r.shop_zone = null
+	sz.remove()
+	_check("视野内无修整区时允许刷新", r._can_spawn_drones())
+
+	# 撞玩家：5 点伤害；强制 100% 甩飞，验证永久脱锁。
+	r.ship.shield = EG.SHIP_SHIELD_MAX
+	r.ship.invuln = 0.0
+	var d1 := _make_drone(r, r.ship.position + Vector2(30, 0), PI)
+	d1.deflect_chance = 1.0
+	r._resolve_collisions()
+	_check("无人机撞玩家造成 5 点伤害", absf(r.ship.shield - 15.0) < 0.01,
+		"shield=%.1f" % r.ship.shield)
+	_check("撞玩家后被甩飞并永久脱锁", d1.flung and not d1.locked and not d1.dead)
+	d1.step(dt)
+	_check("甩飞后不会再次锁定玩家", d1.flung and not d1.locked and d1.vel.length() > EG.DRONE_SPEED,
+		"v=%.1f" % d1.vel.length())
+	r.remove_drone(d1, false)
+
+	# 低概率分支：当场解体。
+	r.ship.shield = EG.SHIP_SHIELD_MAX
+	r.ship.invuln = 0.0
+	var d2 := _make_drone(r, r.ship.position + Vector2(30, 0), PI)
+	d2.deflect_chance = 0.0
+	r._resolve_collisions()
+	_check("无人机小概率当场解体", d2.dead and r.drones.is_empty())
+	_check("解体分支同样造成 5 点伤害", absf(r.ship.shield - 15.0) < 0.01,
+		"shield=%.1f" % r.ship.shield)
+
+	# 撞敌人：造成 5 点伤害后双方结算。
+	r.ship.shield = EG.SHIP_SHIELD_MAX
+	r.ship.invuln = 0.0
+	var e := _make_enemy(r, Vector2(0, -600))
+	var hp0 := e.hp
+	var d3 := _make_drone(r, e.position, 0.0)
+	r._resolve_collisions()
+	_check("无人机撞敌人造成 5 点伤害", absf(e.hp - (hp0 - EG.DRONE_DMG)) < 0.01,
+		"hp=%.1f" % e.hp)
+	_check("撞敌人后无人机解体", d3.dead)
+
+	# 安全区/商店：驱离，贴到本体则解体。
+	var z2 := r.make_zone("safe", Vector2(0, -1200))
+	r.safe_zone = z2
+	var d4 := _make_drone(r, z2.position, 0.0)
+	d4.step(dt)
+	_check("无人机贴到安全区本体即解体", d4.dead)
+	r.safe_zone = null
+	z2.remove()
+
+	var z3 := r.make_zone("safe", Vector2.ZERO)
+	r.safe_zone = z3
+	r.ship.position = Vector2(-3000, 0)
+	var d5 := _make_drone(r, Vector2(480, 0), PI)
+	for i in range(12):
+		d5.step(dt)
+	_check("安全区驱离圈把无人机推离", not d5.dead and d5.vel.x > 0.0,
+		"v=(%.0f, %.0f)" % [d5.vel.x, d5.vel.y])
+	r.safe_zone = null
+	z3.remove()
+	r.remove_drone(d5, false)
+
+	# 脉冲：原地解体。
+	r.ship.position = Vector2.ZERO
+	r.ship.fuel = r.ship.fuel_max
+	r.skills = [{"id": "pulse", "level": 1, "cd": 0.0}]
+	var d6 := _make_drone(r, Vector2(120, 0), PI)
+	r.cast_skill(0)
+	_check("脉冲技能让无人机原地解体", d6.dead and r.drones.is_empty())
+
+	# 刷新计时器接线：与 test_mode 的捷径无关。
+	r.test_mode = false
+	r.safe_timer = 99.0
+	r.meteor_timer = 99.0
+	r.matter_refill_timer = 99.0
+	r.ship.position = Vector2.ZERO
+	r.camera.position = Vector2.ZERO
+	r._spawn_drone_pair()
+	for d in r.drones.duplicate():
+		r.remove_drone(d, false)
+	r.drone_timer = 0.0
+	r._update_spawns(dt)
+	_check("刷新计时器到点成对生成无人机", r.drones.size() == EG.DRONE_PAIR,
+		"n=%d" % r.drones.size())
+	for d in r.drones.duplicate():
+		r.remove_drone(d, false)
+	var z4 := r.make_zone("safe", r.ship.position)
+	r.safe_zone = z4
+	r.drone_timer = 0.0
+	r._update_spawns(dt)
+	_check("修整区在视野内时整个刷新周期被挡住", r.drones.is_empty())
+	r.safe_zone = null
+	z4.remove()
+	r.test_mode = true
 	_kill(r)
 
 func _test_fuel_and_death() -> void:

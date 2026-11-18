@@ -21,6 +21,7 @@ var route: RunRoute
 
 var enemies: Array = []
 var missiles: Array = []
+var drones: Array = []
 var meteors: Array = []
 var matters: Array = []
 var zones: Array = []
@@ -62,6 +63,8 @@ var pending_safe_refresh := false
 var pending_shop_refresh := false
 var meteor_timer := 6.0
 var matter_refill_timer := 2.0
+var drone_timer := 12.0
+var drone_warned := false
 
 var shake := 0.0
 var assist_active := false
@@ -242,6 +245,9 @@ func simulate(delta: float) -> void:
 			continue
 		m.pull = _pull_on_missile(m)
 		m.step(delta)
+	for d in drones.duplicate():
+		if is_instance_valid(d) and not d.dead:
+			d.step(delta)
 	for e in enemies:
 		if not e.dead:
 			e.step(delta)
@@ -525,6 +531,17 @@ func _update_spawns(delta: float) -> void:
 	if current_enemy == null and enemies.size() == 0 and safe_timer <= 0.0 and next_enemy_timer <= 0.0:
 		spawn_enemy()
 
+	# 自杀无人机：玩家视野里没有安全区/商店时才刷新，每 8 秒成对出现，
+	# 锁定玩家的总数上限 6。区域进入视野或达到上限时只做 1 秒一次的重试，
+	# 不会积攒多批。
+	drone_timer -= delta
+	if drone_timer <= 0.0:
+		if _can_spawn_drones():
+			_spawn_drone_pair()
+			drone_timer = EG.DRONE_INTERVAL
+		else:
+			drone_timer = EG.DRONE_RETRY
+
 	if meteor_timer <= 0.0 and not player_hidden:
 		meteor_timer = EG.METEOR_INTERVAL
 		_spawn_meteor()
@@ -658,6 +675,92 @@ func _spawn_meteor() -> void:
 	world.add_child(met)
 	meteors.append(met)
 
+# ---------------------------------------------------------------- drones
+
+## 玩家视野内出现安全区或商店时不再刷新无人机；无人机本身也不占敌人生成位。
+func _can_spawn_drones() -> bool:
+	if state != State.PLAYING or player_hidden:
+		return false
+	if safe_zone != null and is_instance_valid(safe_zone) and safe_zone.active \
+			and is_on_screen(safe_zone.position, safe_zone.clearance_radius()):
+		return false
+	if shop_zone != null and is_instance_valid(shop_zone) and shop_zone.active \
+			and is_on_screen(shop_zone.position, shop_zone.radius):
+		return false
+	return drone_lock_count() < EG.DRONE_MAX_LOCKED
+
+## 只统计仍然锁定玩家的无人机。被甩飞后 locked=false，不再占用 6 个名额。
+func drone_lock_count() -> int:
+	var n := 0
+	for d in drones:
+		if is_instance_valid(d) and not d.dead and d.locked:
+			n += 1
+	return n
+
+func spawn_drone(pos: Vector2, heading: float) -> Drone:
+	var d := Drone.new()
+	d.run = self
+	d.position = pos
+	d.vel = Vector2.RIGHT.rotated(heading) * d.speed
+	world.add_child(d)
+	drones.append(d)
+	Fx.sparks(fx_layer, pos, Color(1.0, 0.5, 0.2, 0.9), 6, 130.0)
+	return d
+
+func _spawn_drone_pair() -> void:
+	var free: int = EG.DRONE_MAX_LOCKED - drone_lock_count()
+	if free <= 0:
+		return
+	var count: int = mini(EG.DRONE_PAIR, free)
+	var base: float = rng.randf() * TAU
+	for i in range(count):
+		var spread: float = 0.0 if count <= 1 else rng.randf_range(-0.26, 0.26)
+		var bearing: float = base + spread
+		var p := _drone_spawn_point(bearing)
+		var aim: float = (ship.position + ship.vel * 0.3 - p).angle()
+		spawn_drone(p, aim)
+	if not drone_warned:
+		drone_warned = true
+		if hud != null and not player_hidden:
+			hud.toast("高速自杀无人机来袭 · 脉冲可将其解体", EG.C_AMBER, 2.6)
+		Audio.play("sfx_alarm", -8.0)
+
+## 在屏幕边缘外生成，留出 160~360px 的预警距离；优先避开天体和修整区的
+## 驱离圈。找不到理想点时退回到最远的屏幕外方向。
+func _drone_spawn_point(bearing: float) -> Vector2:
+	var rect: Rect2 = screen_rect()
+	var center := rect.get_center()
+	var half := rect.size * 0.5
+	for i in range(12):
+		var b: float = bearing if i == 0 else bearing + rng.randf_range(-0.6, 0.6)
+		var dir := Vector2.RIGHT.rotated(b)
+		var edge: float = minf(absf(half.x / maxf(absf(dir.x), 0.001)),
+			absf(half.y / maxf(absf(dir.y), 0.001)))
+		var p: Vector2 = center + dir * (edge + rng.randf_range(
+			EG.DRONE_SPAWN_EDGE_MIN, EG.DRONE_SPAWN_EDGE_MAX))
+		if galaxy.is_inside_any_body(p, EG.DRONE_RADIUS + 40.0):
+			continue
+		var blocked := false
+		for z in zones:
+			if z == null or not is_instance_valid(z) or not z.active:
+				continue
+			if p.distance_to(z.position) < z.clearance_radius() + EG.DRONE_ZONE_WARD + EG.DRONE_RADIUS:
+				blocked = true
+				break
+		if not blocked:
+			return p
+	return center + Vector2.RIGHT.rotated(bearing) * (half.length() + EG.DRONE_SPAWN_EDGE_MAX)
+
+func remove_drone(d, explode: bool = true) -> void:
+	if d == null or not is_instance_valid(d) or d.dead:
+		return
+	var pos: Vector2 = d.position
+	d.remove()
+	drones.erase(d)
+	if explode:
+		Fx.explosion(fx_layer, pos, 0.3, false)
+		Audio.play("sfx_explosion_small", -12.0)
+
 # ---------------------------------------------------------------- combat
 
 func spawn_enemy_missile(enemy: Enemy, muzzle: Vector2, angle: float) -> Missile:
@@ -728,6 +831,35 @@ func _resolve_collisions() -> void:
 			if dmg2 > 0.0:
 				hurt_ship(dmg2, "外壳")
 				Fx.sparks(fx_layer, ship.position, Color(1.0, 0.5, 0.35, 0.8), 8, 120.0)
+
+	# 自杀无人机：撞玩家 5 点伤害，大概率被甩飞并永久脱锁；撞敌人 5 点伤害
+	# 后当场解体。无人机不占敌人生成位，也不产生物质/代币奖励。
+	for d in drones.duplicate():
+		if d == null or not is_instance_valid(d) or d.dead or d.hit_cd > 0.0:
+			continue
+		if d.position.distance_to(ship.position) < d.radius + ship.R:
+			var away: Vector2 = d.position - ship.position
+			if away.length() < 1.0:
+				away = -d.vel.normalized() if d.vel.length() > 1.0 else Vector2.RIGHT
+			away = away.normalized()
+			d.position = ship.position + away * (d.radius + ship.R + 6.0)
+			hurt_ship(EG.DRONE_DMG, "无人机")
+			Fx.sparks(fx_layer, d.position, Color(1.0, 0.55, 0.3, 0.9), 8, 150.0)
+			shake = maxf(shake, 0.3)
+			if rng.randf() < d.deflect_chance:
+				d.fling_from(ship)
+			else:
+				remove_drone(d, true)
+	for d in drones.duplicate():
+		if d == null or not is_instance_valid(d) or d.dead:
+			continue
+		for e in enemies:
+			if e.dead:
+				continue
+			if d.position.distance_to(e.position) < d.radius + e.radius:
+				damage_enemy(e, EG.DRONE_DMG, d.position, false)
+				remove_drone(d, true)
+				break
 
 	# Meteors vs player / enemies.
 	for met in meteors:
@@ -1148,6 +1280,12 @@ func _cast_pulse(lv: int) -> void:
 		m.vel = tangent * impulse
 		m.angle = tangent.angle()
 		m.unlock()
+	# 脉冲对自杀无人机是硬克制：范围内的无人机原地解体，不被推走。
+	for d in drones.duplicate():
+		if d == null or not is_instance_valid(d) or d.dead:
+			continue
+		if d.position.distance_to(ship.position) <= radius:
+			remove_drone(d, true)
 	Fx.warp(fx_layer, ship.position, Color(0.5, 0.95, 1.0, 0.9))
 	var wave := Assets.world_sprite("shockwave", true)
 	wave.position = ship.position
@@ -1494,6 +1632,14 @@ func _cleanup() -> void:
 	for m in missiles.duplicate():
 		if not m.dead and m.position.distance_to(ship.position) > 6000.0:
 			remove_missile(m, false)
+	for d in drones.duplicate():
+		if d == null or not is_instance_valid(d):
+			drones.erase(d)
+			continue
+		if d.dead:
+			drones.erase(d)
+		elif d.position.distance_to(ship.position) > 6000.0:
+			remove_drone(d, false)
 	for mat in matters.duplicate():
 		if not is_instance_valid(mat):
 			matters.erase(mat)
