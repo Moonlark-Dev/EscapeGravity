@@ -29,6 +29,7 @@ func run_tests() -> void:
 	_test_safe_zone_clearance()
 	_test_body_clearance()
 	_test_shop_binding()
+	_test_rest_zone_refresh()
 	_test_initial_map()
 	var bot := await _test_bot_playability()
 	print("RESULT: %d checks, %d failed  (bot: %s)" % [total, failed, str(bot)])
@@ -525,7 +526,7 @@ func _test_zones() -> void:
 	_check("进入安全区隐藏威胁信息", r.player_hidden)
 	r.ship.position = z.position + Vector2(400, 0)
 	r._zone_checks()
-	_check("离开安全区后消失并在 10s 后刷新", r.safe_zone == null and absf(r.safe_respawn_timer - 10.0) < 0.01)
+	_check("离开安全区后消失，且不再有刷新倒计时", r.safe_zone == null and not r.pending_safe_refresh)
 
 	# High-speed entry: the assist must brake hard enough to stop inside R280.
 	var rz := _new_run(120)
@@ -719,7 +720,6 @@ func _test_spawning() -> void:
 		r.enemies.clear()
 		r.current_enemy = null
 	r.safe_zone = null
-	r.safe_respawn_timer = 0.0
 	var expected_safe := r.route.safe_at(r.route.next_safe)
 	r._spawn_safe_respawn()
 	var ok_zone := false
@@ -989,6 +989,95 @@ func _test_shop_binding() -> void:
 	_check("重定位后的商店绑定到新的路线段",
 		r.shop_route_leg == 1 and r.shop_bound_depth == 2,
 		"leg=%d bound=%d" % [r.shop_route_leg, r.shop_bound_depth])
+	_kill(r)
+
+## 修整区刷新语义：战斗区 → 修整区，只有击败敌人才刷新，而且没有倒计时。
+## 安全区与商店都要覆盖“刷新”“正停靠时挂起、离开后立刻补上”两条路径。
+func _test_rest_zone_refresh() -> void:
+	var r := _new_run(131)
+	_clear_arena(r)
+	r.ship.position = Vector2.ZERO
+	r.ship.fuel = r.ship.fuel_max
+	r.route.next_safe = 1
+	r.route.next_shop = 1
+	_check("击败敌人前没有修整区", r.safe_zone == null and r.shop_zone == null)
+
+	# 把 test_mode 关掉再空转，确保没有遗留的按时间刷新（倒计时）逻辑。
+	var block_spawns := func() -> void:
+		r.safe_timer = 999.0
+		r.next_enemy_timer = 999.0
+		r.meteor_timer = 1e9
+		r.matter_refill_timer = 1e9
+	block_spawns.call()
+	r.test_mode = false
+	for i in range(1800):
+		r._update_spawns(dt)
+	r.test_mode = true
+	_check("空场等待 30 秒也不会按时间刷出修整区",
+		r.safe_zone == null and r.shop_zone == null,
+		"safe=%s shop=%s" % [str(r.safe_zone != null), str(r.shop_zone != null)])
+
+	var planned_safe: Vector2 = r.route.safe_at(r.route.next_safe)
+	var planned_shop: Vector2 = r.route.shop_at(r.route.next_shop)
+	var e := _make_enemy(r, Vector2(0, -900))
+	r.kill_enemy(e)
+	_check("击败敌人后立即刷新安全区",
+		r.safe_zone != null and r.safe_zone.position.distance_to(planned_safe) < 1500.0,
+		"d=%.0f" % (r.safe_zone.position.distance_to(planned_safe) if r.safe_zone != null else -1.0))
+	_check("击败敌人后立即刷新商店",
+		r.shop_zone != null and r.shop_zone.position.distance_to(planned_shop) < 1500.0,
+		"d=%.0f" % (r.shop_zone.position.distance_to(planned_shop) if r.shop_zone != null else -1.0))
+	_check("刷新出的安全区与商店互不重叠",
+		r.safe_zone != null and r.shop_zone != null and
+		r.safe_zone.position.distance_to(r.shop_zone.position) >= EG.ZONE_RADIUS * 2.0 + EG.BODY_CONTENT_MARGIN - 1.0,
+		"d=%.0f" % (r.safe_zone.position.distance_to(r.shop_zone.position) if r.safe_zone != null and r.shop_zone != null else -1.0))
+
+	# 离开安全区：不再启动任何倒计时。
+	var safe_pos: Vector2 = r.safe_zone.position
+	r.ship.position = safe_pos
+	r._zone_checks()
+	_check("停靠立即刷新的安全区", r.player_hidden)
+	r.ship.position = safe_pos + Vector2(8000, 0)
+	r._zone_checks()
+	_check("离开安全区后不启动刷新倒计时", r.safe_zone == null and not r.pending_safe_refresh)
+	block_spawns.call()
+	r.test_mode = false
+	for i in range(1200):
+		r._update_spawns(dt)
+	r.test_mode = true
+	_check("离开安全区 20 秒后仍然没有新安全区", r.safe_zone == null)
+
+	# 在商店范围内击败敌人：不能把信标从脚下抽走，离开后立刻补上。
+	var shop_pos: Vector2 = r.shop_zone.position
+	r.ship.position = shop_pos
+	r._zone_checks()
+	_check("进入商店打开交易面板", r.state == Run.State.SHOP)
+	var old_shop: Zone = r.shop_zone
+	var e2 := _make_enemy(r, Vector2(6000, 0))
+	r.kill_enemy(e2)
+	_check("在商店范围内击败敌人不会抽走当前信标",
+		r.shop_zone == old_shop and r.pending_shop_refresh)
+	r.close_shop()
+	r.ship.position = shop_pos + Vector2(8000, 0)
+	r._zone_checks()
+	_check("离开商店后立即补上下一座信标",
+		r.shop_zone != null and r.shop_zone != old_shop,
+		"shop=%s" % str(r.shop_zone != null))
+
+	# 在安全区内击败敌人：同样挂起，离开时立刻补下一个。
+	var safe_pos2: Vector2 = r.safe_zone.position
+	r.ship.position = safe_pos2
+	r._zone_checks()
+	_check("停靠安全区（安全区内击杀的挂起路径）", r.player_hidden)
+	var old_safe: Zone = r.safe_zone
+	var e3 := _make_enemy(r, Vector2(7000, 0))
+	r.kill_enemy(e3)
+	_check("在安全区内击败敌人不会抽走当前安全区",
+		r.safe_zone == old_safe and r.pending_safe_refresh)
+	r.ship.position = safe_pos2 + Vector2(8000, 0)
+	r._zone_checks()
+	_check("离开安全区后立即补上下一个安全区",
+		r.safe_zone != null and r.safe_zone != old_safe)
 	_kill(r)
 
 func _test_initial_map() -> void:

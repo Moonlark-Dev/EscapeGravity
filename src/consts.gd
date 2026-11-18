@@ -142,12 +142,10 @@ const ZONE_CAPTURE_SPEED := 520.0
 const ZONE_CAPTURE_ACCEL := 1600.0
 const ZONE_CAPTURE_GAIN := 3.2
 const ZONE_INFLUENCE_EXTRA := 420.0  # 影响圈 = clearance_radius() + 该值
-const ZONE_RESPAWN := 10.0
 const ZONE_ENEMY_CLEAR := 520.0     # 安全区贴图边缘与敌人外壳的最小间距
 const SAFE_FUEL_DIST := 1875.0      # placement band: ~12.5 s of full-thrust delta-v (50 fuel)
 const SHOP_DIST_MIN := 2800.0
 const SHOP_DIST_MAX := 4200.0
-const SHOP_RESPAWN := 26.0
 
 # ---- Skills ----
 const PULSE_CD := 5.0

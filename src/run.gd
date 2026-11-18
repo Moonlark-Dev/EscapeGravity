@@ -56,8 +56,10 @@ var player_hidden := false
 var fuel_dead_timer := 0.0
 var safe_timer := 0.0
 var next_enemy_timer := 0.0
-var safe_respawn_timer := 0.0
-var shop_respawn_timer := 0.0
+## 修整区（安全区 / 商店）不按时间刷新：击败敌人后立即刷新。玩家正停靠
+## 在其中时刷新先挂起，等离开时马上补上，避免把区域从脚下抽走。
+var pending_safe_refresh := false
+var pending_shop_refresh := false
 var meteor_timer := 6.0
 var matter_refill_timer := 2.0
 
@@ -284,8 +286,6 @@ func _process(delta: float) -> void:
 func _update_timers(delta: float) -> void:
 	safe_timer = maxf(0.0, safe_timer - delta)
 	next_enemy_timer = maxf(0.0, next_enemy_timer - delta)
-	safe_respawn_timer = maxf(0.0, safe_respawn_timer - delta)
-	shop_respawn_timer = maxf(0.0, shop_respawn_timer - delta)
 	meteor_timer -= delta
 	matter_refill_timer -= delta
 
@@ -525,11 +525,6 @@ func _update_spawns(delta: float) -> void:
 	if current_enemy == null and enemies.size() == 0 and safe_timer <= 0.0 and next_enemy_timer <= 0.0:
 		spawn_enemy()
 
-	if safe_respawn_timer <= 0.0 and safe_zone == null and not paused:
-		_spawn_safe_respawn()
-	if shop_respawn_timer <= 0.0 and shop_zone == null and not paused:
-		_spawn_shop_respawn()
-
 	if meteor_timer <= 0.0 and not player_hidden:
 		meteor_timer = EG.METEOR_INTERVAL
 		_spawn_meteor()
@@ -553,6 +548,7 @@ func _spawn_safe_respawn() -> void:
 	p = _place_zone_point(p)
 	safe_zone = make_zone("safe", p)
 	player_hidden = false
+	pending_safe_refresh = false
 	if hud != null:
 		hud.toast("安全区信号已同步", EG.C_MINT, 2.2)
 		hud.emphasize_radar()
@@ -607,6 +603,7 @@ func _spawn_shop_respawn() -> void:
 	shop_bound_depth = depth
 	shop_open = false
 	shop_inside = false
+	pending_shop_refresh = false
 	if hud != null:
 		hud.toast("侦测到新的交易信标", EG.C_AMBER, 2.2)
 
@@ -833,30 +830,34 @@ func kill_enemy(e: Enemy) -> void:
 		tokens = mini(EG.MAX_TOKENS, tokens + 1)
 		Fx.text(fx_layer, pos + Vector2(0, -60), "+1 代币", EG.C_MAGENTA, 20)
 	depth += 1
-	_maybe_refresh_shop()
+	_refresh_rest_zones()
 	safe_timer = EG.DEPTH_SAFE_TIME
 	next_enemy_timer = EG.DEPTH_SAFE_TIME
 	if hud != null:
-		hud.toast("威胁解除 · 安全时间 %d 秒" % int(EG.DEPTH_SAFE_TIME), EG.C_MINT, 2.4)
+		hud.toast("威胁解除 · 修整区已刷新 · 安全时间 %d 秒" % int(EG.DEPTH_SAFE_TIME), EG.C_MINT, 2.4)
 		hud.set_safe_countdown(EG.DEPTH_SAFE_TIME)
 	Audio.play("sfx_upgrade", -6.0)
 
-## 商店绑定它所在路线段的敌人。玩家没使用商店、却先击败了这个敌人，
-## 说明信标已经落在身后：移除旧信标，在下一段路线商店点重新生成。
-func _maybe_refresh_shop() -> void:
-	if shop_zone == null or not is_instance_valid(shop_zone) or not shop_zone.active:
-		return
-	if shop_inside or state == State.SHOP:
-		return
-	var leg := shop_route_leg if shop_route_leg >= 0 else shop_bound_depth - 1
-	if leg < 0 or depth <= leg + 1:
-		return
-	var old := shop_zone
-	shop_zone = null
-	old.remove()
-	_spawn_shop_respawn()
-	if hud != null:
-		hud.toast("商店信标已随战线重新定位", EG.C_AMBER, 2.4)
+## 战斗区清空后，修整区按路线顺序立即刷新：先安全区，再商店。刷新不再
+## 有倒计时，只有击败敌人才会触发；玩家正停靠在某个修整区里时，不能把
+## 它从脚下抽走，先把刷新挂起，离开时立刻补上。
+func _refresh_rest_zones() -> void:
+	var safe_in_use: bool = safe_zone != null and is_instance_valid(safe_zone) and safe_zone.entered
+	if safe_zone != null and is_instance_valid(safe_zone) and not safe_in_use:
+		safe_zone.remove()
+		safe_zone = null
+	if safe_in_use:
+		pending_safe_refresh = true
+	else:
+		_spawn_safe_respawn()
+	var shop_in_use: bool = shop_zone != null and is_instance_valid(shop_zone) and (shop_inside or state == State.SHOP)
+	if shop_zone != null and is_instance_valid(shop_zone) and not shop_in_use:
+		shop_zone.remove()
+		shop_zone = null
+	if shop_in_use:
+		pending_shop_refresh = true
+	else:
+		_spawn_shop_respawn()
 
 func remove_missile(m, explode: bool) -> void:
 	if m.dead:
@@ -1322,12 +1323,14 @@ func _leave_safe() -> void:
 	var z := safe_zone
 	safe_zone = null
 	z.remove()
-	safe_respawn_timer = EG.ZONE_RESPAWN
 	Audio.play("sfx_ui_click", -10.0)
 	if hud != null:
-		hud.toast("离开安全区 · 10 秒后刷新下一个", EG.C_AMBER, 2.2)
+		hud.toast("离开安全区 · 击败敌人后刷新下一个", EG.C_AMBER, 2.2)
 		hud.set_info_hidden(false)
 		hud.set_safe_mode(false)
+	# 安全区里击败过敌人：刷新被挂起，离开的同一帧补上新的安全区。
+	if pending_safe_refresh:
+		_spawn_safe_respawn()
 
 func _open_shop() -> void:
 	shop_open = true
@@ -1350,7 +1353,9 @@ func _leave_shop() -> void:
 	shop_zone = null
 	if z != null:
 		z.remove()
-	shop_respawn_timer = EG.SHOP_RESPAWN
+	# 在商店范围内击败过敌人：刷新被挂起，离开的同一帧补上新的信标。
+	if pending_shop_refresh:
+		_spawn_shop_respawn()
 
 func close_shop() -> void:
 	if state != State.SHOP:

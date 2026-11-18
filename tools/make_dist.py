@@ -4,7 +4,7 @@
 用法：
     python3 tools/make_dist.py                        # 打包当前版本的全部平台
     python3 tools/make_dist.py --platforms windows,linux
-    python3 tools/make_dist.py --version 1.0.9 --platforms windows
+    python3 tools/make_dist.py --version 1.1.0 --platforms windows
 
 产物命名固定为 `EscapeGravity-<version>-<platform>.<ext>`，可直接作为 CI 工件与
 GitHub Release 资产上传。
@@ -80,7 +80,7 @@ ANDROID_NOTE = """Escape Gravity {version}（Android arm64）
 2. 安装 EscapeGravity-{version}-android-arm64.apk；
 3. 横屏游玩，进入游戏后使用左侧虚拟摇杆与右侧加力/技能按钮；
 4. 需要 Android 7.0+ arm64 设备。
-minSdk 24 / targetSdk 36 / versionCode 12 / 包名 com.escapegravity.game
+minSdk 24 / targetSdk 36 / versionCode 13 / 包名 com.escapegravity.game
 """
 
 
