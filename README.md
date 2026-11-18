@@ -1,4 +1,4 @@
-# Escape Gravity · 1.0.9 发行版
+# Escape Gravity · 1.1.0
 
 [![Build](https://github.com/Moonlark-Dev/EscapeGravity/actions/workflows/build.yml/badge.svg)](https://github.com/Moonlark-Dev/EscapeGravity/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -14,6 +14,11 @@
 
 ## 更新日志
 
+### 1.1.0 更新
+
+- **修整区改为击败敌人后立即刷新**：安全区与商店不再有 **10 秒 / 26 秒**倒计时（`safe_respawn_timer`、`shop_respawn_timer` 与 `ZONE_RESPAWN` / `SHOP_RESPAWN` 已删除）。每清空一个战斗区，`_refresh_rest_zones` 立即把安全区与商店移到下一段路线预置点：先安全区、后商店，互不重叠。
+- **离开修整区不再触发刷新**：离开安全区/商店本身不会刷新任何区域，下一次刷新只由击败敌人驱动；如果击败敌人时玩家正停靠在安全区或商店内，刷新挂起，离开的同一帧补上，避免区域从脚下被抽走。
+- 开局仍由 `_initial_spawn` 预置首个安全区与商店；下一名敌人仍按击杀后 **8 秒安全时间**刷新。
 
 ### 1.0.9 更新
 
@@ -97,7 +102,7 @@ escape-gravity-release/
 │   ├── meteor.gd / matter.gd / zone.gd / decoy.gd / anchor.gd / fx.gd
 │   ├── assets.gd / audio.gd / store.gd / controls.gd
 │   ├── backdrop.gd           # 视差星云/星点
-│   └── selftest.gd           # 140 项无头断言 + 机器人可玩性验证
+│   └── selftest.gd           # 154 项无头断言 + 机器人可玩性验证
 ├── assets/                   # world / ui / audio / fonts
 ├── tools/                    # 素材生成、后期、构建、打包
 ├── docs/                     # ART.md / DESIGN_MAP.md / QA.md / 资产清单 / 截图
@@ -120,7 +125,7 @@ escape-gravity-release/
 
 ```bash
 godot --headless --path . -- --selftest
-# RESULT: 140 checks, 0 failed
+# RESULT: 154 checks, 0 failed
 ```
 
 ### 界面

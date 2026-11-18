@@ -98,9 +98,9 @@
 |---|---|---|
 | 安全区半径/捕获 | 280 / 捕获井 | `zone.gd`：出生时触发半径 `ZONE_ENTRY_RADIUS=78`（只比飞船略大），玩家到中心时 `set_entered` 同一帧把 `radius` 设为 280，并用 0.62s 的 BACK 缓动 + 冲击波贴图播放扩张；700px 影响圈内用目标速度把飞船拉向圆心（520 px/s、1600 px/s²），并压掉切向速度 |
 | 进入 | 圈 → 展开、回满燃料、导弹/陨石消失、敌人停火退出、屏蔽信息 | `_enter_safe`；扩张瞬间即视为进入，玩家不会在动画期间飞出去；敌人间距与燃料判定用 `clearance_radius()`（完整 280） |
-| 离开 | 消失，10s 后刷新下一个 | `_leave_safe`；`safe_respawn_timer=10` |
-| 刷新位置 | 路线预置点；每个敌人之间一个；直线距离 ≤ 50 燃料（≈1875px） | `RunRoute.safe_at`（首段 0.35、之后 0.50，侧偏 470~600px）；路线缺失时才回退 `find_unexplored_point(700,1875)` |
-| 商店 | R280、不回燃料、代币交易；离路线比安全区更远 | `RunRoute.shop_at`（段内 0.72、侧偏 1200~1600px）；3 件商品，按稀有度 2~5 代币；离开后 26s 刷新；记录 `shop_route_leg` / `shop_bound_depth`，跨过该段敌人即重定位 |
+| 离开 | 消失；离开本身**不触发刷新**，也没有倒计时 | `_leave_safe`；下一次刷新只由击败敌人驱动；若离开时存在挂起的刷新（`pending_safe_refresh`），离开的同一帧补出新的安全区 |
+| 刷新位置 | 路线预置点；每个敌人之间一个；直线距离 ≤ 50 燃料（≈1875px）；**击败敌人后立即刷新** | `RunRoute.safe_at`（首段 0.35、之后 0.50，侧偏 470~600px）；`kill_enemy` → `_refresh_rest_zones` → `_spawn_safe_respawn`；路线缺失时才回退 `find_unexplored_point(700,1875)`；先刷新安全区、后刷新商店，两者不重叠 |
+| 商店 | R280、不回燃料、代币交易；离路线比安全区更远；**击败敌人后立即刷新** | `RunRoute.shop_at`（段内 0.72、侧偏 1200~1600px）；3 件商品，按稀有度 2~5 代币；每次击杀由 `_refresh_rest_zones` 立即移到下一段路线商店点（`_next_route_shop_for_progress` 把游标至少推到当前深度），刷新时记录 `shop_route_leg` / `shop_bound_depth`；停靠在商店内时挂起（`pending_shop_refresh`），离开同一帧补刷；不再有 26s 重开计时 |
 | 燃料耗尽 | 仍可惯性/引力；屏幕内有安全区被吸入；否则结束 | `_check_fuel`：无安全区在屏内且无燃料道具时 12s 结束；`assist_accel` 把无动力飞船拉向安全区 |
 
 ## 9. 操作辅助装置
@@ -123,7 +123,8 @@
 | 每段路线经过天体 | `route.gd` 每段放一个天体锚点：侧方 380~480px（R260~340），或 42% 概率放进两敌之间空白路径（R140~180、横向 ≤160）；`galaxy._generate_chunk` 在该区块补天体 |
 | 两个敌人之间必有安全区 | 每个 encounter 的 `safe` 落在上一敌人→本敌人的 0.35（首段）/0.50 处、侧偏 470~600px |
 | 商店比安全区更远 | 商店落在段内 0.72、侧偏 1200~1600px；相对玩家与相对路线的距离都大于同段安全区 |
-| 商店随战线重定位 | 击败商店所在路线段的敌人（未进商店）后，旧信标移除并在下一段商店点重新生成 |
+| 商店随战线前移 | 每次击败敌人都与安全区一起立即刷新到下一段路线商店点（不再只在“被跳过”时重定位） |
+| 修整区刷新 | 只有击败敌人才触发：`kill_enemy` 在 `depth += 1` 后调用 `_refresh_rest_zones`，先安全区、后商店，旧信标移除；**没有 10s / 26s 倒计时**；玩家正停靠在安全区（`safe_zone.entered`）或处于商店范围/面板（`shop_inside` / `State.SHOP`）时挂起，离开同一帧补刷 |
 | 恒星引力仅贴近生效 | 对飞船 1.12R；导弹/陨石全量 |
 | 击败后不倒计时传送，而是安全时间后刷新 | `safe_timer=8`，HUD 显示倒计时；结束后按路线顺序刷新下一敌人 |
 | 敌人按路线顺序刷新 | `RunRoute.next_enemy` 递增；`_next_enemy_position` 取 `enemy_at(index)` |
@@ -153,7 +154,7 @@
 | 新增技能 3 个 | 引力锚 / 相位滑行 / 诱饵信标 | 文档只给脉冲示例，但要求 2 槽且升级；需要内容深度 |
 | 导弹巢 | R300 / HP40 / 3 发齐射 / 上限 4，与炮塔按 `depth%3==2` 交替 | 提供第二种非小型敌人，改变齐射节奏 |
 | 精英 | 每 5 层，血量 ×1.6、齐射 +1 | 深度推进的可见威胁升级 |
-| 商店重开 | 离开后 26s 取路线上的下一个商店点 | 文档只给初始距离；路线保证商店比安全区更远，形成可持续经济 |
+| 修整区刷新 | 击败敌人后立即刷新安全区与商店（无倒计时），取代旧的 10s / 26s 计时 | 文档只给初始距离与“击败后安全时间”；立即刷新让修整区始终随战线前移，且玩家不必空场等待 |
 | 安全区捕获 | 700px 影响圈内持续捕获，不限于燃料 0；进圈后停靠 | 文档“无动力时会把玩家吸进去”；燃料 0 时也成立，且不会把高速玩家甩飞 |
 | 燃料耗尽倒计时 | 12s | 文档只说“判定结束”，未给时间；给玩家漂移/抓安全区的机会 |
 | 一局上限 | 无（无限深度） | 肉鸽循环；记录最佳深度 |
@@ -165,7 +166,7 @@
 | 系统 | 文件 | 关键函数 |
 |---|---|---|
 | 应用状态 / 过场 / 截图 | `main.gd` | `start_run` / `show_menu` / `toggle_pause` / `_run_shots` |
-| 单局 | `run.gd` | `simulate` / `spawn_enemy` / `_resolve_collisions` / `_zone_checks` / `cast_skill` / `choose_upgrade` |
+| 单局 | `run.gd` | `simulate` / `spawn_enemy` / `_resolve_collisions` / `_zone_checks` / `_refresh_rest_zones` / `cast_skill` / `choose_upgrade` |
 | 星系 | `galaxy.gd` | `ensure_around` / `gravity_at` / `find_unexplored_point` / `mark_view` |
 | 隐藏路线 | `route.gd` | `ensure_ahead` / `enemy_at` / `safe_at` / `shop_at` / `body_anchors_in_chunk` |
 | 天体 | `gravity_body.gd` | `gravity_at` / `surface_gravity` |

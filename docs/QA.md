@@ -1,6 +1,6 @@
 # QA / 验证记录
 
-日期：2026-11-14 · 版本：1.0.9 · 引擎：Godot 4.7.2 stable
+日期：2026-11-18 · 版本：1.1.0 · 引擎：Godot 4.7.2 stable
 环境：Linux x86_64 · Godot headless + Xvfb/llvmpipe · JDK 17 (Temurin 17.0.21) · Android SDK build-tools 35 / platform 35
 
 ---
@@ -11,17 +11,17 @@
 godot --headless --path . -- --selftest
 ```
 
-完整输出：`docs/selftest_output.txt`（140 项断言 + 机器人明细）。
+完整输出：`docs/selftest_output.txt`（154 项断言 + 机器人明细）。
 
 ```
-RESULT: 140 checks, 0 failed
+RESULT: 154 checks, 0 failed
 ```
 
 **导出包内自测**（同一套脚本，从内嵌 PCK 运行）：
 
 ```bash
 ./build/linux/EscapeGravity.x86_64 --headless -- --selftest
-# RESULT: 140 checks, 0 failed
+# RESULT: 154 checks, 0 failed
 ```
 
 覆盖面：
@@ -33,9 +33,10 @@ RESULT: 140 checks, 0 failed
 - 导弹：速度/转向率/5s 脱锁/半径、命中 25、过载 2.5s、两发摧毁 50 血炮塔
 - 陨石：0.5 磨损、撞飞后对敌 5、受飞船引力
 - 物质：大 3 XP、超 260 不吸、150 内被吸、高速远离仍被追上吸收、20 XP/级
-- 区域：安全区进入前 R78、扩张瞬间 R280（贴图仍在缩小状态）、补满/清弹/隐藏/离开 10s 刷新；高速切线掠过仍被吸入停靠、径向高速进入也能停靠；商店 3 件且不回燃料
-- 出生区：开局生成路线首段安全区（与首个敌人保持 1220px 间距）；首个敌人与商店按路线生成；离开安全区 10s 后按路线预置点刷新
-- 商店绑定：未进商店却击败商店所在路线段的敌人后，信标自动重定位到下一段并绑定新深度
+- 区域：安全区进入前 R78、扩张瞬间 R280（贴图仍在缩小状态）、补满/清弹/隐藏；**离开安全区不再启动倒计时刷新**；高速切线掠过仍被吸入停靠、径向高速进入也能停靠；商店 3 件且不回燃料
+- 出生区：开局同时预置路线首段安全区（与首个敌人保持 1220px 间距）与首个商店，不需要首杀解锁；首个敌人按路线生成；开局之后**只有击败敌人才刷新修整区**
+- 修整区刷新（`_test_rest_zone_refresh`，1.1.0 新增 14 项断言）：敌前没有修整区 / 空场 30s 不会有倒计时刷新 / 击杀后安全区与商店**立即**刷新且互不重叠 / 离开安全区不启动倒计时、离开 20s 仍无 / 商店内击杀挂起并在离开时补刷 / 安全区内击杀挂起并在离开时补刷
+- 商店绑定：每次击败敌人都会把商店立即刷新到下一段路线商店点（游标至少推进到当前深度）并绑定新深度，不再有 26s 重开与“跨过所属敌人”的单独重定位
 - 发现：敌人未进屏前不可见、不进雷达/方位/血条、仇恨范围外不开火；玩家进入 2100px 后主动逼近并持续开火；未发现时导弹从屏幕外生成、以切线弧线切入、方向 72% 偏向敌人 ±57°，偷袭弹单独上限 2 且不占直射名额；进屏同一帧 `discovered` 并淡入
 - 物品/升级：2 格、满栏销毁、5 格上限后无栏位卡、技能满后无新技能卡；游玩中升级只累积 `pending_levels`、不弹面板，进入安全区才开面板，停靠期间新攒的等级立即补开
 - 撞击：撞敌人为同速天体的 1.5 倍、伤害随速度升高、撞敌人与撞天体单次都封顶 5、法线速度低于 40 不掉护盾
@@ -66,7 +67,8 @@ RESULT: 140 checks, 0 failed
 
 ## 2. 导出包验证
 
-> 本次 1.0.9 重新导出并验证了 Linux / Windows / Android 三个包，`dist/` 同步重打，交付物表与 SHA256SUMS 均为本批产物。
+> 本次 **1.1.0** 重跑了源码自测（154/154），重新导出 Linux 与 Windows 可执行文件（Linux 包内自测通过、重新生成截图）；
+> **dist 发行包与 Android 包未重建、未上传**（下方 Android 记录为 1.0.9 实测；Windows 段同时列出 1.1.0 本地导出验证与 1.0.9 发行包记录）。
 
 ### 2.1 Linux（验证打包完整性）
 
@@ -75,12 +77,14 @@ xvfb-run -a -s "-screen 0 1280x720x24" \
   ./build/linux/EscapeGravity.x86_64 -- --shots=/tmp/shots
 ```
 
-- 退出码 0；11 张截图全部生成（**由导出包运行产生，不是编辑器**），已复制到 `docs/shots/`。
+- 1.1.0 源码重新导出后在 Xvfb + llvmpipe 下真实运行，退出码 0；11 张截图全部重新生成（**由导出包运行产生，不是编辑器**），已复制到 `docs/shots/`。
 - 标题、中文字体、贴图、音频、脚本均从内嵌 PCK 加载；无缺失贴图警告。
-- `build/linux/EscapeGravity.x86_64` = 96,355,808 bytes，ELF x86-64。
+- `build/linux/EscapeGravity.x86_64` = 96,352,800 bytes，ELF x86-64（1.1.0 导出）。
 - 触屏 20:9 截图另用 `--resolution 2400x1080 -- --touch --shots=...` 生成，取 `04_battle` 作为 `docs/shots/12_touch.png`。
 
-### 2.2 Windows
+### 2.2 Windows（1.1.0 本地导出验证；1.0.9 发行包记录）
+
+> 1.1.0 已在本地重新导出 Windows 可执行文件并验证 PE 头与 `GDPC` 标记；`dist/` 发行包未重建、未上传，推送后由 GitHub Actions 构建 1.1.0 的 Windows 工件。下方 1.0.9 发行包记录保留作对照。
 
 ```bash
 file build/windows/EscapeGravity.exe
@@ -88,10 +92,13 @@ file build/windows/EscapeGravity.exe
 python3 -c "d=open(...).read(); print(b'GDPC' in d[-4096:])"   # True
 ```
 
-- 单文件、内嵌 PCK，无外部依赖；132,039,856 bytes。
+- 1.1.0 本地导出：132,036,848 bytes，PE32+ x86-64，尾部 `GDPC` 校验通过；单文件、内嵌 PCK，无外部依赖。
+- 1.0.9 发行包：132,039,856 bytes。
 - 未做商业代码签名（没有证书），首次运行会有 SmartScreen 提示。
 
-### 2.3 Android
+### 2.3 Android（1.0.9 发行包记录，1.1.0 未重建）
+
+> 以下为 1.0.9 实包记录；1.1.0 的 Android 包本次未重建、未上传。1.1.0 预期 versionCode **13**（versionName `1.1.0`），当前直链与下列输出仍是 1.0.9 包（versionCode 12）。
 
 ```bash
 aapt2 dump badging build/android/EscapeGravity.apk
@@ -117,6 +124,8 @@ Signer #1 certificate SHA-256: ddd8a610132d862301c8987f18f545a6eefdf58f0617547d7
 - 未在真机运行（本机无 Android 设备）；静态检查 + 签名验证通过，Linux 导出包已验证同一 PCK 的运行时行为。
 
 ### 2.4 OpenList 分发
+
+> 以下为 1.0.9 的上传记录；**1.1.0 未上传到 OpenList**（发行包尚未重建）。
 
 - 已上传到 NAS 的 `/vol1/1000/MyFiles/Public/`：
   - `dist/EscapeGravity-1.0.9-windows-x86_64.zip`：60,168,030 bytes，SHA-256 `b32f54b4…f3cd5f73`
@@ -158,6 +167,8 @@ src/main.gd:209:	await RenderingServer.frame_post_draw
 ---
 
 ## 5. 界面检查
+
+> 以下截图均由 **1.1.0 Linux 导出包**重新生成（导出包真实运行，不是编辑器截图）。
 
 - 16:9（1280×720）：标题、玩法、设置、战斗、暂停、安全区、商店、升级、结算、威胁弧、爆炸 —— 12 张截图见 `docs/shots/`。
 - 20:9（2400×1080 / 逻辑 1600×720，触屏）：标题按钮按屏幕中心锚定；右侧控制列自下而上为加力 150、技能 92×2、物品栏，代币读数在雷达下方，互不重叠。
