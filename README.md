@@ -1,4 +1,4 @@
-# Escape Gravity · 1.1.0
+# Escape Gravity · 1.2.0
 
 [![Build](https://github.com/Moonlark-Dev/EscapeGravity/actions/workflows/build.yml/badge.svg)](https://github.com/Moonlark-Dev/EscapeGravity/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -13,6 +13,13 @@
 - 许可：**MIT**（见 [`LICENSE`](LICENSE)；字体与引擎的第三方许可见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)）
 
 ## 更新日志
+
+### 1.2.0 更新
+
+- **新增小型敌人“自杀式无人机”**：速度 **460 px/s**、转向率仅 **0.22 rad/s**（转弯半径约 **2090px**），锁定玩家后只能画大弧冲过来。撞到玩家或其他敌人各造成 **5 点伤害**；撞玩家时有 **80%** 概率被甩飞并**永久脱锁**（之后不再追踪），只有 20% 概率当场解体。
+- **刷新规则**：玩家视野内没有安全区或商店时才会刷新；每 **8 秒**成对刷新 **2 架**，锁定玩家的无人机总数上限 **6 架**；视野内出现修整区时暂停刷新并每秒重试。
+- **修整区克制**：安全区/商店的驱离圈会把无人机强行推离，贴到区域本体则当场解体；**脉冲技能**范围内的无人机直接原地解体。
+- 无人机在雷达上显示为威胁点，战斗截图与自测同步更新。
 
 ### 1.1.0 更新
 
@@ -102,7 +109,7 @@ escape-gravity-release/
 │   ├── meteor.gd / matter.gd / zone.gd / decoy.gd / anchor.gd / fx.gd
 │   ├── assets.gd / audio.gd / store.gd / controls.gd
 │   ├── backdrop.gd           # 视差星云/星点
-│   └── selftest.gd           # 154 项无头断言 + 机器人可玩性验证
+│   └── selftest.gd           # 176 项无头断言 + 机器人可玩性验证
 ├── assets/                   # world / ui / audio / fonts
 ├── tools/                    # 素材生成、后期、构建、打包
 ├── docs/                     # ART.md / DESIGN_MAP.md / QA.md / 资产清单 / 截图
@@ -125,7 +132,7 @@ escape-gravity-release/
 
 ```bash
 godot --headless --path . -- --selftest
-# RESULT: 154 checks, 0 failed
+# RESULT: 176 checks, 0 failed
 ```
 
 ### 界面

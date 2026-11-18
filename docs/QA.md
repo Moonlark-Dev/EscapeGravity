@@ -1,6 +1,6 @@
 # QA / 验证记录
 
-日期：2026-11-18 · 版本：1.1.0 · 引擎：Godot 4.7.2 stable
+日期：2026-11-18 · 版本：1.2.0 · 引擎：Godot 4.7.2 stable
 环境：Linux x86_64 · Godot headless + Xvfb/llvmpipe · JDK 17 (Temurin 17.0.21) · Android SDK build-tools 35 / platform 35
 
 ---
@@ -11,17 +11,17 @@
 godot --headless --path . -- --selftest
 ```
 
-完整输出：`docs/selftest_output.txt`（154 项断言 + 机器人明细）。
+完整输出：`docs/selftest_output.txt`（176 项断言 + 机器人明细）。
 
 ```
-RESULT: 154 checks, 0 failed
+RESULT: 176 checks, 0 failed
 ```
 
 **导出包内自测**（同一套脚本，从内嵌 PCK 运行）：
 
 ```bash
 ./build/linux/EscapeGravity.x86_64 --headless -- --selftest
-# RESULT: 154 checks, 0 failed
+# RESULT: 176 checks, 0 failed
 ```
 
 覆盖面：
@@ -41,6 +41,7 @@ RESULT: 154 checks, 0 failed
 - 物品/升级：2 格、满栏销毁、5 格上限后无栏位卡、技能满后无新技能卡；游玩中升级只累积 `pending_levels`、不弹面板，进入安全区才开面板，停靠期间新攒的等级立即补开
 - 撞击：撞敌人为同速天体的 1.5 倍、伤害随速度升高、撞敌人与撞天体单次都封顶 5、法线速度低于 40 不掉护盾
 - 技能：脉冲 10 燃料 / 200 冲量 / 脱锁 / 5s CD / 按移动方向左右偏转（静止按面向）；诱饵抵达脱锁；干扰弹偏转
+- 自杀无人机（`_test_drones`，1.2.0 新增 22 项断言）：成对刷新、屏幕外入场、锁定额度 6、满额停刷、速度 460 + 低转向率、视野内有安全区/商店时停刷、撞玩家 5 伤害、80% 甩飞永久脱锁 / 20% 解体、撞敌人 5 伤害后解体、安全区驱离圈推开、贴本体解体、脉冲原地解体、刷新计时器接线
 - 死亡：燃料耗尽 12s 判负、导弹 25 击穿 20 护盾、复活币恢复 8
 - 地图：隐藏路线不回头（每段沿主方向前进）、每段经过天体引力圈、42% 尝试把天体放进两个敌人之间的空白路径且避开安全区/商店/敌人、两个敌人之间必有安全区、安全区离两侧敌人≥1150 且刷新时避开当前敌人、商店比安全区离路线更远；初始安全区/商店/敌人按路线落位；敌人按路线顺序刷新
 - 生成间距：天体压住安全区/商店/敌人时环形搜索重新落点（安全区按 R280+160、敌人按外壳+160）；新天体不会生成在安全区/玩家/路线预置节点上；敌人被天体挤到会沿径向推出表面
@@ -67,8 +68,8 @@ RESULT: 154 checks, 0 failed
 
 ## 2. 导出包验证
 
-> 本次 **1.1.0** 重跑了源码自测（154/154），重新导出 Linux 与 Windows 可执行文件（Linux 包内自测通过、重新生成截图）；
-> **dist 发行包与 Android 包未重建、未上传**（下方 Android 记录为 1.0.9 实测；Windows 段同时列出 1.1.0 本地导出验证与 1.0.9 发行包记录）。
+> 本次 **1.2.0** 重跑了源码自测（176/176），重新导出 Linux 与 Windows 可执行文件（Linux 包内自测通过、重新生成截图）；
+> **dist 发行包与 Android 包未重建、未上传**（下方 Android 记录为 1.0.9 实测；Windows 段同时列出 1.2.0 本地导出验证与 1.0.9 发行包记录）。
 
 ### 2.1 Linux（验证打包完整性）
 
@@ -77,14 +78,14 @@ xvfb-run -a -s "-screen 0 1280x720x24" \
   ./build/linux/EscapeGravity.x86_64 -- --shots=/tmp/shots
 ```
 
-- 1.1.0 源码重新导出后在 Xvfb + llvmpipe 下真实运行，退出码 0；11 张截图全部重新生成（**由导出包运行产生，不是编辑器**），已复制到 `docs/shots/`。
+- 1.2.0 源码重新导出后在 Xvfb + llvmpipe 下真实运行，退出码 0；11 张截图全部重新生成（**由导出包运行产生，不是编辑器**），已复制到 `docs/shots/`。战斗截图额外摆出两架自杀无人机，便于核对新敌人的贴图与雷达点。
 - 标题、中文字体、贴图、音频、脚本均从内嵌 PCK 加载；无缺失贴图警告。
-- `build/linux/EscapeGravity.x86_64` = 96,352,800 bytes，ELF x86-64（1.1.0 导出）。
+- `build/linux/EscapeGravity.x86_64` = 96,369,344 bytes，ELF x86-64（1.2.0 导出）。
 - 触屏 20:9 截图另用 `--resolution 2400x1080 -- --touch --shots=...` 生成，取 `04_battle` 作为 `docs/shots/12_touch.png`。
 
-### 2.2 Windows（1.1.0 本地导出验证；1.0.9 发行包记录）
+### 2.2 Windows（1.2.0 本地导出验证；1.0.9 发行包记录）
 
-> 1.1.0 已在本地重新导出 Windows 可执行文件并验证 PE 头与 `GDPC` 标记；`dist/` 发行包未重建、未上传，推送后由 GitHub Actions 构建 1.1.0 的 Windows 工件。下方 1.0.9 发行包记录保留作对照。
+> 1.2.0 已在本地重新导出 Windows 可执行文件并验证 PE 头与 `GDPC` 标记；`dist/` 发行包未重建、未上传，推送后由 GitHub Actions 构建 1.2.0 的 Windows 工件。下方 1.0.9 发行包记录保留作对照。
 
 ```bash
 file build/windows/EscapeGravity.exe
@@ -92,13 +93,13 @@ file build/windows/EscapeGravity.exe
 python3 -c "d=open(...).read(); print(b'GDPC' in d[-4096:])"   # True
 ```
 
-- 1.1.0 本地导出：132,036,848 bytes，PE32+ x86-64，尾部 `GDPC` 校验通过；单文件、内嵌 PCK，无外部依赖。
+- 1.2.0 本地导出：132,053,392 bytes，PE32+ x86-64，尾部 `GDPC` 校验通过；单文件、内嵌 PCK，无外部依赖。
 - 1.0.9 发行包：132,039,856 bytes。
 - 未做商业代码签名（没有证书），首次运行会有 SmartScreen 提示。
 
-### 2.3 Android（1.0.9 发行包记录，1.1.0 未重建）
+### 2.3 Android（1.0.9 发行包记录，1.2.0 未重建）
 
-> 以下为 1.0.9 实包记录；1.1.0 的 Android 包本次未重建、未上传。1.1.0 预期 versionCode **13**（versionName `1.1.0`），当前直链与下列输出仍是 1.0.9 包（versionCode 12）。
+> 以下为 1.0.9 实包记录；1.2.0 的 Android 包本次未重建、未上传。1.2.0 预期 versionCode **14**（versionName `1.2.0`），当前直链与下列输出仍是 1.0.9 包（versionCode 12）。
 
 ```bash
 aapt2 dump badging build/android/EscapeGravity.apk
@@ -125,7 +126,7 @@ Signer #1 certificate SHA-256: ddd8a610132d862301c8987f18f545a6eefdf58f0617547d7
 
 ### 2.4 OpenList 分发
 
-> 以下为 1.0.9 的上传记录；**1.1.0 未上传到 OpenList**（发行包尚未重建）。
+> 以下为 1.0.9 的上传记录；**1.2.0 未上传到 OpenList**（发行包尚未重建）。
 
 - 已上传到 NAS 的 `/vol1/1000/MyFiles/Public/`：
   - `dist/EscapeGravity-1.0.9-windows-x86_64.zip`：60,168,030 bytes，SHA-256 `b32f54b4…f3cd5f73`
@@ -141,7 +142,7 @@ Signer #1 certificate SHA-256: ddd8a610132d862301c8987f18f545a6eefdf58f0617547d7
 `docs/asset_check.txt`：
 
 ```
-world: expected=40 present=46 missing=[]
+world: expected=40 present=47 missing=[]
 ui:    expected=50 present=58 missing=[]
 audio: expected=23 present=23 missing=[]
 ```
@@ -168,7 +169,7 @@ src/main.gd:209:	await RenderingServer.frame_post_draw
 
 ## 5. 界面检查
 
-> 以下截图均由 **1.1.0 Linux 导出包**重新生成（导出包真实运行，不是编辑器截图）。
+> 以下截图均由 **1.2.0 Linux 导出包**重新生成（导出包真实运行，不是编辑器截图）。
 
 - 16:9（1280×720）：标题、玩法、设置、战斗、暂停、安全区、商店、升级、结算、威胁弧、爆炸 —— 12 张截图见 `docs/shots/`。
 - 20:9（2400×1080 / 逻辑 1600×720，触屏）：标题按钮按屏幕中心锚定；右侧控制列自下而上为加力 150、技能 92×2、物品栏，代币读数在雷达下方，互不重叠。

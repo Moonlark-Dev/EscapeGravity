@@ -26,7 +26,7 @@ grep -rn "_draw\|draw_\(line\|circle\|arc\|polygon\|polyline\|string\|colored_po
 
 ```
 assets/
-├── world/   46 张世界贴图
+├── world/   47 张世界贴图
 ├── ui/      58 张 UI 贴图
 ├── audio/   23 个 WAV（2 BGM + 21 SFX）
 └── fonts/ui.ttc   文泉驿正黑（16.8 MB）
@@ -48,6 +48,7 @@ assets/
 | `turret.png` | 1024×1024 | `scale = 420/400`（外缘约 420px），会缓慢自转 |
 | `turret_ember.png` | 768×768 | 过载时叠加红色能量纹，`scale = 420/384` |
 | `nest.png` | 256×256 | `scale = R/124`（可见外缘 ≈ R）；会缓慢自转/浮动 |
+| `drone.png` | 64×64 | 1:1，**机头朝 +X**；小型自杀无人机，碰撞半径 18，橙色机翼 + 品红传感器 |
 | `meteor_1..3.png` | 96×96 | `scale = 0.42`（显示约 40px），碰撞半径 17；随机旋转 |
 | `matter_small.png` | 32×32 | 0.7×（约 22px） |
 | `matter_big.png` | 64×64 | 0.62×（约 40px） |

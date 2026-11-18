@@ -84,6 +84,28 @@ PASS  干扰弹：使锁定导弹偏转并脱锁
 PASS  脉冲：移动方向左侧的导弹向左偏转   v=(-138, -145)
 PASS  脉冲：移动方向右侧的导弹向右偏转   v=(160, 120)
 PASS  脉冲：分界线随移动方向而非面向   left=(-161, -118) right=(166, 111)
+PASS  无人机成对刷新   n=2
+PASS  无人机在屏幕外生成并飞入
+PASS  锁定玩家的无人机计数为 2
+PASS  锁定玩家的无人机上限 6   locked=6 n=6
+PASS  满 6 后不再补充无人机
+PASS  无人机保持高速 460   v=460.0
+PASS  无人机转向率很低（大转弯半径）   turn=0.0037
+PASS  视野内有安全区时不刷新无人机
+PASS  视野内有商店时不刷新无人机
+PASS  视野内无修整区时允许刷新
+PASS  无人机撞玩家造成 5 点伤害   shield=15.0
+PASS  撞玩家后被甩飞并永久脱锁
+PASS  甩飞后不会再次锁定玩家   v=820.0
+PASS  无人机小概率当场解体
+PASS  解体分支同样造成 5 点伤害   shield=15.0
+PASS  无人机撞敌人造成 5 点伤害   hp=45.0
+PASS  撞敌人后无人机解体
+PASS  无人机贴到安全区本体即解体
+PASS  安全区驱离圈把无人机推离   v=(339, 311)
+PASS  脉冲技能让无人机原地解体
+PASS  刷新计时器到点成对生成无人机   n=2
+PASS  修整区在视野内时整个刷新周期被挡住
 PASS  燃料耗尽且无安全区/燃料道具 → 12s 后结束
 PASS  敌方导弹伤害 25（护盾 20 时一击结束）
 PASS  复活币自动消耗并恢复 8 护盾
@@ -161,4 +183,4 @@ PASS  地图生成时填充了物质   matter=150
   bot seed=302 orbit=880 invuln=true -> hp=0 hits=2 t=11.4s state=0 dmg=
 PASS  无敌机器人能靠诱导击毁炮塔（验证核心循环）   invuln kills 3/3
 PASS  普通机器人也能至少击毁一次炮塔   normal kills 1/3
-RESULT: 154 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 21.5333333333334, "state": 4 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 56.6166666666647, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 0, "time": 8.48333333333333, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 22.8666666666666, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 10.9000000000001, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": true, "hits": 2, "time": 11.3833333333335, "state": 0 }], "invuln_kills": 3, "normal_kills": 1 })
+RESULT: 176 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 21.5333333333334, "state": 4 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 56.6166666666647, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 0, "time": 8.48333333333333, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 22.8666666666666, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 10.9000000000001, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": true, "hits": 2, "time": 11.3833333333335, "state": 0 }], "invuln_kills": 3, "normal_kills": 1 })
