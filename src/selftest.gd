@@ -695,9 +695,9 @@ func _test_zones() -> void:
 	var sz := r.make_zone("shop", Vector2(3000, 0))
 	r.shop_zone = sz
 	r.ship.position = sz.position
-	r.ship.fuel = 100.0
+	r.ship.fuel = r.ship.fuel_max
 	r._zone_checks()
-	_check("商店打开 3 件商品且不回燃料", r.state == Run.State.SHOP and r.shop_stock.size() == 3 and absf(r.ship.fuel - 100.0) < 0.01)
+	_check("商店打开 3 件商品且不回燃料", r.state == Run.State.SHOP and r.shop_stock.size() == 3 and absf(r.ship.fuel - r.ship.fuel_max) < 0.01)
 	r.close_shop()
 	_check("关闭商店回到游戏", r.state == Run.State.PLAYING)
 	_kill(r)
@@ -1145,7 +1145,7 @@ func _test_streaming() -> void:
 			near += 1
 	_check("远离出生点仍有天体区块", near >= 3, "near=%d total=%d" % [near, r.galaxy.bodies.size()])
 	var has_matter_field := r.ship.fuel_max == EG.SHIP_FUEL_MAX
-	_check("初始燃料 100（燃料槽 500 → 100）", has_matter_field and absf(r.ship.fuel - 100.0) < 0.01, "fuel=%.0f" % r.ship.fuel)
+	_check("初始燃料 270（燃料槽 500 → 270）", has_matter_field and absf(r.ship.fuel - 270.0) < 0.01, "fuel=%.0f" % r.ship.fuel)
 	_kill(r)
 
 func _test_route() -> void:
