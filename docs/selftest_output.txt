@@ -2,13 +2,13 @@ Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
 
 === Escape Gravity selftest ===
 PASS  飞船极速 150   speed=150.0
-PASS  推进到极速只消耗加速所需燃料   fuel=498.4 want=498.4
+PASS  推进到极速只消耗加速所需燃料   fuel=98.4 want=98.4
 PASS  松开推进 2 秒仍保持 150（太空无阻力）   speed=150.0
-PASS  滑行不消耗燃料   fuel=498.4
+PASS  滑行不消耗燃料   fuel=98.4
 PASS  超过引擎极速的惯性被保留   speed=400.0
-PASS  极速后继续按住推进不耗燃料   fuel=500.0
+PASS  极速后继续按住推进不耗燃料   fuel=100.0
 PASS  加力极速 ≈192   speed=192.0
-PASS  加力燃料按实际加速计（≈4.8/s 满推力）   fuel=499.2 want=499.2
+PASS  加力燃料按实际加速计（≈4.8/s 满推力）   fuel=99.2 want=99.2
 PASS  初始加力槽 6.6s（旧 2.2s 的三倍）   cap=6.60
 PASS  加力结束后保持 192 惯性   speed=192.0
 PASS  加力推力 3×   plain=6.33 boost=19.00
@@ -28,7 +28,7 @@ PASS  环绕天体可获得超过引擎极速的速度   max=278.4
 PASS  环绕过程不会钻进天体表面   min_surface=181
 PASS  离开引力圈后仍高于基础极速   speed=187.8
 PASS  深空滑行 2 秒保持 300   speed=300.0
-PASS  滑行不耗燃料   fuel=500.0
+PASS  滑行不耗燃料   fuel=100.0
 PASS  导弹速度 150
 PASS  导弹转向率 0.525 rad/s   turn=0.525
 PASS  导弹碰撞半径 12
@@ -41,13 +41,23 @@ PASS  炮塔视野外/内移速 240/18
 PASS  齐射间隔 5s/1s、上限 3 枚
 PASS  视野内导弹从炮塔外壳发射   muzzle=434
 PASS  视野外导弹仍从侧方 820px 进入   d=820
+PASS  锁定期导弹不与发射者结算碰撞   hp=50.0
+PASS  脱锁后导弹可以撞回发射者   hp=25.0
+PASS  锁定期导弹不会穿进敌人外壳   min_clear=11.5
+PASS  锁定期导弹贴着外壳绕飞（横向绕行）   detour=431
+PASS  键鼠操作只显示键盘键位
+PASS  手柄操作只显示手柄键位
+PASS  手柄方向键绑定到升级/商店卡槽   n=3
+PASS  按下键盘自动切回键盘键位
+PASS  升级卡短说明保持 15px
+PASS  升级卡长说明自适应缩字号并完整放下   fs=10 h=125
 PASS  陨石磨损护盾 0.5   shield=19.50
 PASS  被玩家撞飞的陨石对敌人 5 伤害   hp=45.0
 PASS  大物质 3 XP / 自动吸取   xp=3
 PASS  260 吸取半径：300 外不吸引   d0=300 d1=300
 PASS  260 吸取半径：150 内被吸引   n0=150 n1=10
 PASS  高速远离时物质仍会追上并被吸收（不会被甩飞）   xp=3 d=420
-PASS  每 20 XP 升级
+PASS  每 100 XP 升级（1.4.0 经验 ×5）
 PASS  撞敌人：150 速度扣 1.5 倍伤害   dmg=2.93 shield=17.07
 PASS  撞天体：伤害随速度且低于撞敌人   dmg=1.96
 PASS  撞击伤害随速度升高   80=1.03 720=5.00
@@ -79,7 +89,7 @@ PASS  节能巡航把油耗降到 0.88
 PASS  油耗叠到 5 折后不再提供节能巡航
 PASS  2 格背包装满时仍能抽到物品栏扩建
 PASS  背包没满时也能抽到物品栏扩建
-PASS  脉冲消耗 10 燃料   fuel=490.0
+PASS  脉冲消耗 10 燃料   fuel=90.0
 PASS  脉冲使导弹脱锁
 PASS  脉冲冲量 200   v=200.0
 PASS  脉冲冷却 5s
@@ -136,7 +146,7 @@ PASS  未发现导弹的射入方向偏向敌人   95/120
 PASS  进入屏幕即被发现
 PASS  发现后贴图淡入   a=0.05
 PASS  远离出生点仍有天体区块   near=24 total=39
-PASS  初始燃料 500   fuel=500
+PASS  初始燃料 100（燃料槽 500 → 100）   fuel=100
 PASS  地图生成阶段预置隐藏路线   n=12
 PASS  路线按滚动窗口继续预生成   n=24
 PASS  路线不会往回走   min_fwd=0.350
@@ -184,7 +194,7 @@ PASS  母舰舰尾吃 1.5 倍暴击（37.5）
 PASS  母舰舰尾暴击进入 4 秒长过热
 PASS  母舰转向极慢 0.35 rad/s
 PASS  双子中继站成对刷新
-PASS  双子间距 750px   gap=750
+PASS  双子节点生成间距 1500px（1.4.0 翻倍）   gap=1500
 PASS  中弹后 3 秒才开始回血
 PASS  未过热的联动站让另一座缓慢回血   hp=26.2 -> 29.8
 PASS  击毁一座后遭遇战继续、深度不推进
@@ -205,7 +215,7 @@ PASS  加速导弹凿穿拦截点防
 PASS  相位跃迁把敌人跳到玩家侧翼 900px   d=900
 PASS  超载殉爆一次抛射 6 枚水雷   mines=6
 PASS  精英词缀不再只堆血量（殉爆型血量更低）
-PASS  引力涡轮环绕行星每秒回 3 燃料   fuel=103.00
+PASS  引力涡轮环绕行星每秒回 3 燃料   fuel=93.00
 PASS  相对论弹头按 400 px/s 给 +32 伤害   bonus=32.0
 PASS  近炸增幅：130px 内脱锁伤害翻倍并回 1.5 护盾   dmg=50.0 shield=11.50
 PASS  惯性制导篡改把脱锁弹朝敌人微偏 12°   ang=12.00
@@ -255,4 +265,4 @@ PASS  地图生成时填充了物质   matter=150
   bot seed=302 orbit=880 invuln=true -> hp=0 hits=2 t=11.4s state=0 dmg=
 PASS  无敌机器人能靠诱导击毁炮塔（验证核心循环）   invuln kills 3/3
 PASS  普通机器人也能至少击毁一次炮塔   normal kills 1/3
-RESULT: 248 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 21.5333333333334, "state": 4 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 56.6166666666647, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 0, "time": 8.48333333333333, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 22.8666666666666, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 10.9000000000001, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": true, "hits": 2, "time": 11.3833333333335, "state": 0 }], "invuln_kills": 3, "normal_kills": 1 })
+RESULT: 258 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 21.5333333333334, "state": 4 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 56.6166666666647, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 0, "time": 8.48333333333333, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 22.8666666666666, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 10.9000000000001, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": true, "hits": 2, "time": 11.3833333333335, "state": 0 }], "invuln_kills": 3, "normal_kills": 1 })

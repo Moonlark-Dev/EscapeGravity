@@ -6,7 +6,7 @@
 
 《Escape Gravity》是一款 2D 俯视角、物理驱动、**没有直接攻击**的太空肉鸽。玩家只能推进、加力、释放技能，靠诱导敌人自己的追踪导弹撞上敌人来造成伤害。
 
-- 当前版本：**1.3.0**
+- 当前版本：**1.4.0**
 - 引擎：**Godot 4.7.2 stable**，GL Compatibility 渲染器
 - 逻辑分辨率：**1280×720**，`canvas_items` 拉伸 + `expand` 适配宽屏/刘海屏
 - 目标平台：**Windows x86_64**、**Android arm64-v8a（横屏）**
@@ -93,10 +93,11 @@ escape-gravity-release/
 
 ## 关键玩法不变量
 
-这些行为是 1.0.8 从 1.0.5 基线重做、1.0.9 调整过升级与撞击、1.1.0 把修整区改为击杀即刷新、1.2.0 增加自杀无人机、1.3.0 扩充敌人生态与肉鸽流派后的基线，别无意改回去：
+这些行为是 1.0.8 从 1.0.5 基线重做、1.0.9 调整过升级与撞击、1.1.0 把修整区改为击杀即刷新、1.2.0 增加自杀无人机、1.3.0 扩充敌人生态与肉鸽流派、1.4.0 调整成长节奏与导弹绕飞后的基线，别无意改回去：
 
 - **导弹入场**：敌人在视野内时，从炮塔最近的三炮口之一 / 导弹巢前向口、`R+14` 处出膛；被发现的敌人在视野外仍按设计文档从玩家侧向 **820px** 进入。锁定期导弹不与来源敌人碰撞，避免刚出膛自爆。
 - **导弹引力**：锁定中与脱锁后都持续受天体引力（`MISSILE_GRAVITY_SCALE=0.6`）；引力强于转向能力时会把导弹拉离拦截线。只有玩家的辅助装置会平衡恒星引力，别把导弹也豁免。
+- **导弹锁定期绕飞（1.4.0）**：锁定中把所有敌舰外壳当实体障碍。`Missile._avoidance_steer` 在提前 220px 的预测里，如果航向会擦进“外壳 + 弹体 + 26px”就改朝绕壳切线；`Missile._resolve_hull_penetration` 再把位置硬性推回外壳外（外壳 + 弹体 - 0.5px），撞向舰体的速度分量改成切向滑行。**别再退回“只在来源敌人附近做一点偏转”的旧实现**：旧偏转方向算反、而且只处理 `current_enemy`，玩家用引力绕一圈时导弹会从敌人正中间穿过去。绕不开的导弹压进碰撞半径后会在 `_resolve_collisions` 里真的打中敌人；来源敌人在锁定中仍免碰撞（发射豁免），脱锁后才结算，诱导伤害循环不要改没。
 - **敌人刷新与发现**：按 `RunRoute` 预生成顺序取点（首段 1900~2400，之后 2100~2700）；两个敌人位置之间必有一个安全区，商店比安全区离路线更远。路线只用于布局、不渲染；不要改回随机方向刷新。敌人未进入玩家屏幕前不可见、不进雷达/方位/血条；玩家进入 `ENEMY_AGGRO_RANGE=2100` 后以 `1.5×` 速度逼近，贴图进入屏幕的同一帧才算 `discovered`。
 - **未发现也会开火**：`enemy._fire_hidden` 在屏幕边缘外 180~320px 生成偷袭弹，切线初速让它绕弧切入；72% 的方向落在敌人方位 ±57° 内，其余全随机。偷袭弹 `sneak=true`，单独上限 `ENEMY_HIDDEN_MAX=2`，且**不占**正常 3 枚直射名额。别用 `locked_missile_count()` 把它们算进去，否则会挤掉正面齐射、破坏诱导循环。
 - **开局即有安全区与商店**：`_initial_spawn` 先生成路线首段安全区（`route.safe_at(0)`，并消费掉 `next_safe`），再放商店、生成首个敌人；修整区不需要首杀解锁。首段安全区在路线 35% 处、横向偏移 470~600，离飞船通常 ≥800px，不会被 700px 捕获圈在开局就拽走。之后每次击败敌人都由 `_refresh_rest_zones` 调用 `_spawn_safe_respawn` / `_spawn_shop_respawn` 按路线预置点刷新；路线缺失时才回退 `find_unexplored_point(700, 1875)`。不要把补给锁回首杀之后。
@@ -115,15 +116,17 @@ escape-gravity-release/
 - **升级池只出有效卡**：`Defs.roll_upgrades` 里权重 ≤0 的卡一律不进卡池（`slot` 满格、`eco_cruise` 叠到 5 折、`mod_card` 全部改装满层、`skill_awaken` 没有可觉醒技能时都为 0）。`slot` 的条件是 `item_slots < ITEM_SLOTS_MAX`（不是 `inventory.size() < item_slots`，那样背包一满就永远刷不出扩建），背包满时权重 11、未满 6。`skill_new` 不再因为技能槽满而被剔除——它改为带 `replace=true` 进池，由 `State.REPLACE_SKILL` 处理替换。
 - **撞击伤害按速度**：`_resolve_collisions` 用 `ship.bounce_from()` 返回的法线冲击速度，经 `collision_damage()` 把 40~380 px/s 映射到 **0.5~5**；撞敌人 ×1.5，撞敌人与撞天体的最终值都封顶 **5**。擦边（法线速度 <40）不掉血。别退回固定 3~7 的 remap。
 - **自杀无人机（1.2.0）**：`drone.gd` 独立于 `enemies` 数组；460 px/s / 0.22 rad/s（转弯半径约 2090），撞玩家/敌人各 5 伤害并**当场解体**。大转弯半径下玩家靠机动甩开：锁定最多 5s，近身进入 240px 后开始远离立即 `_lose_lock`，`locked=false` 永久生效、不再追踪，残骸直线飞 8s 后消失。`_update_spawns` 每 8s 成对刷新，**玩家视野内有安全区/商店时暂停**，锁定上限 6；`Drone._zone_ward` 用 320px 驱离圈推离、进入区域本体即解体；`_cast_pulse` 范围内直接解体。不要把它并进 `enemies`，否则会破坏主敌人的发现/血条/计数。
-- **五种主敌人随深度轮换（1.3.0）**：`Run.enemy_kind_for_depth` 用 `(depth-1) % 5` 取 `["turret","nest","aegis","singularity","twin"]`；`Run._make_attacker` 统一填属性。**偏导母舰**（R360/HP70/0.35 rad/s）：`Enemy.facing` 追玩家，`apply_hit` 用命中点角度把正面 ±60° 的伤害压到 20%（25→5）且不触发过热，舰尾 ±60° 吃 1.5 倍暴击（37.5）并进入 4 秒长过热；**不要把它改成按距离或按导弹朝向判定**。**引力阱舰**（R320/HP60）：`_rig_fields` 每 7 秒斥力 / 3.5 秒虹吸切换，斥力只推偏速度 <260 的导弹（高速弹凿穿），虹吸同时拉玩家（加速度 260）、导弹与陨石，虹吸结束时 `burst_left` 补齐一次齐射。**双子中继站**（R210×2）：`Run.spawn_enemy` 成对生成并互相 `twin` 链接，leader 用 `_move_pair` 围绕 `pair_center` 以 0.42 rad/s 公转、间距 750；受击设 `heal_delay=3`，若另一座未过热则 `heal_left` 回血；一座倒下后另一座失联暴走（`twin=null`、提速、`elite=true`），**两座都倒下才 `depth += 1` 并刷新修整区**，`kills` 也只记一次。
+- **五种主敌人随深度轮换（1.3.0）**：`Run.enemy_kind_for_depth` 用 `(depth-1) % 5` 取 `["turret","nest","aegis","singularity","twin"]`；`Run._make_attacker` 统一填属性。**偏导母舰**（R360/HP70/0.35 rad/s）：`Enemy.facing` 追玩家，`apply_hit` 用命中点角度把正面 ±60° 的伤害压到 20%（25→5）且不触发过热，舰尾 ±60° 吃 1.5 倍暴击（37.5）并进入 4 秒长过热；**不要把它改成按距离或按导弹朝向判定**。**引力阱舰**（R320/HP60）：`_rig_fields` 每 7 秒斥力 / 3.5 秒虹吸切换，斥力只推偏速度 <260 的导弹（高速弹凿穿），虹吸同时拉玩家（加速度 260）、导弹与陨石，虹吸结束时 `burst_left` 补齐一次齐射。**双子中继站**（R210×2）：`Run.spawn_enemy` 成对生成并互相 `twin` 链接，leader 用 `_move_pair` 围绕 `pair_center` 以 0.42 rad/s 公转、间距 1500（1.4.0 由 750 翻倍）；受击设 `heal_delay=3`，若另一座未过热则 `heal_left` 回血；一座倒下后另一座失联暴走（`twin=null`、提速、`elite=true`），**两座都倒下才 `depth += 1` 并刷新修整区**，`kills` 也只记一次。
 - **新敌方弹药（1.3.0）**：`Run.roll_enemy_ammo` 决定弹种——深度 <3 只出普通弹，深层导弹巢 35% 子母分裂弹，其余按 `min(0.5, 0.10×(depth-2))` 出二段加速弹。二段加速弹前 1.8 秒 110 px/s / 0.9 rad/s，之后 340 px/s / 0.12 rad/s；子母分裂弹在锁定倒计时结束时 `_split()` 成 3 枚 `frag`（无锁、12 伤、7 秒寿命），不要改成“脱锁平飞”。伤害走 `Missile.dmg`，不要再回退到全局 `MISSILE_DMG_ENEMY`；水雷 `mine` 无锁、90~120 px/s、可被脉冲反推。
 - **精英词缀（1.3.0）**：深层血量斜率是 **+14%/层**（`EG.DEPTH_HP_GROWTH`），精英在 `depth >= 6` 且 `(depth-6) % 4 == 0` 出现，×1.45 血 + 齐射 +1，并带一个词缀：`point_defense`（两颗护卫球，每颗每 1.2 秒挡一发，速度 ≥280 的导弹凿穿）、`phase_blink`（过热结束时瞬移到玩家侧翼 900px，双子不抽此词缀）、`volatile`（血量 ×0.7，每次过热向四周抛 6 枚水雷）。别再改回“每 5 层单纯 ×1.6 血”。
 - **核心改装（1.3.0）**：`Run.mods: Dictionary`（id→层数，上限 3），`Defs.MODS` 12 张，分 `gravity/deceive/billiard/trap` 四流派。效果都集中在 `Run._update_mods`、`on_missile_unlock`、`damage_enemy`（连锁殉爆/相对论/超载）、`_resolve_collisions`（回收反应堆）、`_cast_pulse`（质量投射器/木马协议）、`_resonance_tick`（引力锚×诱饵重叠）、`on_decoy_gone`/`on_anchor_gone`（甩射）与 `hit_ship_by_meteor`（引力碎星带）。`ship.boost_free` 由 `_update_mods` 每帧写入，`ship.fuel_cost_mult` 由节能巡航维护。
 - **技能觉醒（1.3.0）**：技能 Lv3 后 `Defs.roll_upgrades` 给 `skill_awaken` 卡；有两条分支的技能（脉冲）先出通用卡，选中后进入 `State.AWAKEN_CHOICE` 二选一（`ui.show_awaken_choice`），单分支技能直接落地。`Run._apply_awaken` 把 `s["awaken"]` 记在技能字典上并把等级设 4；`_cast_*` 用 `skill_awaken("pulse")` 等分支。**不要**把觉醒做成独立技能槽。技能槽满时 `skill_new` 卡仍会刷出并带 `replace=true`，`choose_upgrade` 转入 `State.REPLACE_SKILL` 弹双槽对比，替换后新技能继承原槽一半等级（向下取整、至少 1）。
+- **升级卡说明自适应（1.4.0）**：升级卡 306×430、说明区 254×160；`ui._fit_label` 用 `Font.get_multiline_string_size` 实测排版高度，15px 放不下就逐级缩到 10px。商店行、技能替换、觉醒二选一共用。别再退回固定 15px + 100px 高的说明区（长说明会被卡片底边裁掉）。
+- **PC 手柄键位（1.4.0）**：`Controls._input` 根据最近一次输入设备切 `pad_active` 并发出 `device_changed`；`Controls.hint(action)` 返回当前设备键位，HUD、菜单、所有覆盖层都只显示同一套键位。手柄绑定：左摇杆移动、RB 加力、Y/B 技能、X 使用物品、←/→ 切换物品、Start 暂停、A 结算再来一局、方向键选卡（`card_1~5`）。**RB 不要再同时绑 `item_next`**（会一次触发两件事）。
 - **升级池（1.3.0）**：`fuel_25` 已删除，换成 `eco_cruise`（油耗 ×0.88，叠到 0.5 为止，`ship.fuel_cost_mult` 同步）；燃料上限卡 +40/+80；`slot` 权重背包满 11 / 未满 6；满油时不再出燃料卡这条语义由“删除燃料卡”取代。**别再往池子里加回 `fuel_25`**。
 - **商店三货架（1.3.0）**：`_roll_shop` 固定 3 行——补给位 1~2 代币（护盾补片/备用能源/现场满额维修）、战术道具位 3~4（干扰弹/诱饵弹/紧急充能/引力水雷/加力灌注）、黑市 5~7（必出改装或觉醒）。offer 字典用 `kind`（item/service/mod/awaken）+ `title/desc/rarity/icon/shelf`，`ui._make_shop_row` 只读这些字段。背包满时购买**不再拒买**，直接进入 `State.DESTROY` 丢弃替换，替换后回到商店面板（`destroy_and_take` 里判断 `shop_inside`）。
 
-- **平衡**：初始燃料 **500**；推进 4/s、加力 **4.8/s（1.2×）**（均按实际 Δv），3× 推力，引擎极速 150 / 加力 192，初始槽 **6.6s**；护盾 20。
+- **平衡**：初始燃料 **100**（1.4.0 由 500 收紧）；每级经验 **100**（1.4.0 由 20 ×5）；推进 4/s、加力 **4.8/s（1.2×）**（均按实际 Δv），3× 推力，引擎极速 150 / 加力 192，初始槽 **6.6s**；护盾 20。
 - **状态机**：`PLAYING / LEVELUP / SHOP / DESTROY / DEAD / REPLACE_SKILL / AWAKEN_CHOICE`；暂停由 `main.gd` 控制，`run.paused` 冻结模拟。`REPLACE_SKILL` 是技能槽满时选新技能的双槽对比面板，`choose_skill_replace` / `cancel_skill_replace` 负责收尾；`AWAKEN_CHOICE` 是双分支技能（脉冲）的觉醒二选一，`choose_awaken` / `cancel_awaken_choice` 负责收尾，取消同样退还这次升级。
 - **存档**：`user://escape_gravity.cfg` 只保存设置与历史记录；没有中途存档 / 云存档 / meta 解锁。
 
@@ -169,7 +172,7 @@ python3 tools/make_dist.py --platforms windows,linux
 
 改动运行逻辑后，至少完成：
 
-1. `RESULT: 248 checks, 0 failed`；导出包内再跑一次 `./build/linux/EscapeGravity.x86_64 --headless -- --selftest`。
+1. `RESULT: 258 checks, 0 failed`；导出包内再跑一次 `./build/linux/EscapeGravity.x86_64 --headless -- --selftest`。
 2. 用导出包重新生成截图；桌面 13 张（含 `13_aegis` / `14_twin`）+ 移动端 20:9 一张，检查标题居中、触屏按钮不重叠。
 3. 无运行时绘制审计（应只有 `RenderingServer.frame_post_draw` 一条命中）：
    ```bash
@@ -186,6 +189,7 @@ python3 tools/make_dist.py --platforms windows,linux
 - **换美术**：按 `docs/ART.md` 的同名文件覆盖；若主体占比变化，改碰撞半径或 `enemy.gd` 的缩放分母；重新导入并生成截图。
 - **加技能/道具**：`src/defs.gd` 加定义 → `run.gd` 的 `cast_skill` / `use_item` / 升级池 → `ui.gd` 的图标与文案 → 自测。
 - **改移动端布局**：`ui.gd._build_touch` 与 `menu.gd._button_centered`；必须用 `--touch --resolution 2400x1080` 重新截图。
+- **改键位提示**：`controls.gd` 的 `HINTS` 是唯一键位表（`[键盘, 手柄]`），界面一律用 `Controls.hint(action)` / `ui._key_tag()`；新面板别忘了 `_on_device_changed` 的重画分支。
 - **改敌人 AI**：`enemy.gd.step`（移动/安全区绕行/开火）与 `run.gd._next_enemy_position`（路线刷新）；`_find_enemy_spawn` 只作路线缺失时的回退。不要破坏“视野内炮口、视野外 820”的入场规则。
 - **改地图流式**：`galaxy.gd.ensure_around` / `_generate_chunk`、`route.gd`、`backdrop.gd`、`run.gd._update_spawns` 的物质补充；改完在远点（如 120000px）验证仍有一天体与背景，并跑路线自测。
 - **改文档/截图**：截图由导出包生成，不要用编辑器截图冒充；`docs/.gdignore` 防止 Godot 导入 docs 内的 PNG。
@@ -210,7 +214,7 @@ python3 tools/make_dist.py --platforms windows,linux
 
 - Android 没有真机实测；只做了导出、签名、aapt2 静态检查和同 PCK 的 Linux 运行验证。
 - Windows exe 未做商业代码签名，首次运行可能出现 SmartScreen。
-- 触屏/手柄未做 UI 焦点导航；菜单需要点击/触摸。
+- 触屏/手柄未做 UI 焦点导航：菜单（设置/玩法说明/音量）仍需要点击/触摸；手柄可直接 A 开始、Start 暂停、方向键选卡与 A 再来一局。
 - 仅中文 UI；没有多语言。
 - 激光、中途存档、meta 解锁未实现（技能替换已在 1.3.0 补齐，见 `docs/DESIGN_MAP.md` 的差异 / 取舍表）。
 - 音效为程序化合成占位，未做人耳母带试听。

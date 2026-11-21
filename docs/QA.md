@@ -1,6 +1,6 @@
 # QA / 验证记录
 
-日期：2026-11-21 · 版本：1.3.0 · 引擎：Godot 4.7.2 stable
+日期：2026-11-21 · 版本：1.4.0 · 引擎：Godot 4.7.2 stable
 环境：Linux x86_64 · Godot headless + Xvfb/llvmpipe · JDK 17 (Temurin 17.0.21) · Android SDK build-tools 35 / platform 35
 
 ---
@@ -11,28 +11,28 @@
 godot --headless --path . -- --selftest
 ```
 
-完整输出：`docs/selftest_output.txt`（248 项断言 + 机器人明细）。
+完整输出：`docs/selftest_output.txt`（258 项断言 + 机器人明细）。
 
 ```
-RESULT: 248 checks, 0 failed
+RESULT: 258 checks, 0 failed
 ```
 
 **导出包内自测**（同一套脚本，从内嵌 PCK 运行）：
 
 ```bash
 ./build/linux/EscapeGravity.x86_64 --headless -- --selftest
-# RESULT: 248 checks, 0 failed
+# RESULT: 258 checks, 0 failed
 ```
 
 覆盖面：
 
-- 物理：太空无阻力（松开推进 2 秒仍保持速度）、引擎极速 150（超过后推进不把惯性压回）、加力 3× 推力 / 192 极速、燃料按实际 Δv 计（到极速后按住推进不耗油，滑行免费）、加力槽 6.6s 与 0.7s 后回充（推进中同样回充，耗尽需先松开）、碰撞半径 40 / 12 / 护盾 20
+- 物理：太空无阻力（松开推进 2 秒仍保持速度）、引擎极速 150（超过后推进不把惯性压回）、加力 3× 推力 / 192 极速、燃料按实际 Δv 计（到极速后按住推进不耗油，滑行免费）、燃料槽 100（1.4.0 由 500 收紧）、加力槽 6.6s 与 0.7s 后回充（推进中同样回充，耗尽需先松开）、碰撞半径 40 / 12 / 护盾 20
 - 环绕加速：1.9R 切线进入行星引力圈，20 秒内峰值速度 >250、离开后仍 >180；深空滑行 300 速度 2 秒不衰减、不耗油
 - 安全区停靠：以 600 速度进入 R78 触发圈，扩张到 R280 后辅助装置刹停，最终速度 <20 且仍在圈内；以 650 切向掠过也会被捕获井吸进圈内
 - 引力：表面 285、内圈 395、3R 截止、辅助操作装置平衡恒星引力、锁定中的导弹仍受引力弯折（0.6×）
-- 导弹：速度/转向率/5s 脱锁/半径、命中 25、过载 2.5s、两发摧毁 50 血炮塔
+- 导弹：速度/转向率/5s 脱锁/半径、命中 25、过载 2.5s、两发摧毁 50 血炮塔；**1.4.0 新增**——锁定期不会穿进敌舰外壳（最小间隙 11.5px）、贴壳横向绕飞、来源敌人在锁定中免碰撞而脱锁后能撞回它
 - 陨石：0.5 磨损、撞飞后对敌 5、受飞船引力
-- 物质：大 3 XP、超 260 不吸、150 内被吸、高速远离仍被追上吸收、20 XP/级
+- 物质：大 3 XP、超 260 不吸、150 内被吸、高速远离仍被追上吸收、100 XP/级（1.4.0 由 20 ×5）
 - 区域：安全区进入前 R78、扩张瞬间 R280（贴图仍在缩小状态）、补满/清弹/隐藏；**离开安全区不再启动倒计时刷新**；高速切线掠过仍被吸入停靠、径向高速进入也能停靠；商店 3 件且不回燃料
 - 出生区：开局同时预置路线首段安全区（与首个敌人保持 1220px 间距）与首个商店，不需要首杀解锁；首个敌人按路线生成；开局之后**只有击败敌人才刷新修整区**
 - 修整区刷新（`_test_rest_zone_refresh`，1.1.0 新增 14 项断言）：敌前没有修整区 / 空场 30s 不会有倒计时刷新 / 击杀后安全区与商店**立即**刷新且互不重叠 / 离开安全区不启动倒计时、离开 20s 仍无 / 商店内击杀挂起并在离开时补刷 / 安全区内击杀挂起并在离开时补刷
@@ -41,10 +41,12 @@ RESULT: 248 checks, 0 failed
 - 物品/升级：2 格、满栏销毁、5 格上限后无栏位卡、技能满后无新技能卡；游玩中升级只累积 `pending_levels`、不弹面板，进入安全区才开面板，停靠期间新攒的等级立即补开；安全区进站即补满燃料，满油时不再出燃料卡（权重 0），燃料不足时仍出；物品栏扩建只看栏位是否还能扩——2 格背包装满时同样能抽到，背包没满也能抽到
 - 撞击：撞敌人为同速天体的 1.5 倍、伤害随速度升高、撞敌人与撞天体单次都封顶 5、法线速度低于 40 不掉护盾
 - 技能：脉冲 10 燃料 / 200 冲量 / 脱锁 / 5s CD / 按移动方向左右偏转（静止按面向）；诱饵抵达脱锁；干扰弹偏转
-- **敌人生态（1.3.0，`_test_new_enemies` / `_test_enemy_ammo` / `_test_elite_affixes` / `_test_content_smoke`）**：五种主敌人按 `(depth-1)%5` 轮换；深层血量斜率 +14%/层；偏导母舰正面 25→5 且不过热、舰尾 37.5 暴击 + 4 秒过热；引力阱舰斥力只推偏 <260 的导弹、虹吸把导弹吸向舰体、虹吸结束蓄满 3 发齐射；双子成对刷新、间距 750、受击 3 秒后联动回血、击毁一座后遭遇战继续且深度不推进、两座都倒下才推进；二段加速弹 110→340 px/s 与 0.9→0.12 rad/s；子母分裂弹分裂成 3 枚 12 伤无锁弹头；拦截点防吃低速弹、被 400 px/s 凿穿；相位跃迁跳到侧翼 900px；超载殉爆一次抛 6 枚水雷；八层内容冒烟把五种敌人实际跑过模拟
+- **敌人生态（1.3.0，`_test_new_enemies` / `_test_enemy_ammo` / `_test_elite_affixes` / `_test_content_smoke`）**：五种主敌人按 `(depth-1)%5` 轮换；深层血量斜率 +14%/层；偏导母舰正面 25→5 且不过热、舰尾 37.5 暴击 + 4 秒过热；引力阱舰斥力只推偏 <260 的导弹、虹吸把导弹吸向舰体、虹吸结束蓄满 3 发齐射；双子成对刷新、节点间距 1500（1.4.0 由 750 翻倍）、受击 3 秒后联动回血、击毁一座后遭遇战继续且深度不推进、两座都倒下才推进；二段加速弹 110→340 px/s 与 0.9→0.12 rad/s；子母分裂弹分裂成 3 枚 12 伤无锁弹头；拦截点防吃低速弹、被 400 px/s 凿穿；相位跃迁跳到侧翼 900px；超载殉爆一次抛 6 枚水雷；八层内容冒烟把五种敌人实际跑过模拟
 - **核心改装（1.3.0，`_test_core_mods`）**：引力涡轮环绕回 3 燃料、相对论弹头 400 px/s → +32 伤、近炸增幅 130px 内翻倍到 50 并回 1.5 盾、惯性制导 12° 微偏、连锁殉爆只影响 450px 内、质量投射器脉冲轰飞陨石且撞击 18、木马协议把无人机骇入成 560 px/s、引力碎星带撞陨石不掉血不减速、共振奇点提速 60% 且刷新寿命、回收反应堆 -0.8s/+3 燃料、战地整备 3 秒免费加力
 - **觉醒与替换（1.3.0，`_test_awakenings`）**：Lv3 技能进入觉醒池、觉醒后 Lv4 且记录分支、聚能扇面推向机头、零点静滞打断齐射并延长过热、残影诱饵 3 秒信标、镜像双生两枚信标、双极锚定沿切线甩弹、技能槽满选新技能进入替换流程并继承一半等级
 - **商店与升级池（1.3.0，`_test_shop_shelves` + `_test_inventory_and_upgrades`）**：固定三货架的 offer 类型与价格区间、黑市必出改装/觉醒、购买扣代币且改装即时生效、现场维修回满护盾不占背包、满包购买进入丢弃替换并回到商店面板；`fuel_25` 已从池中移除、`eco_cruise` 降到 0.88 且 5 折后不再出现
+- **键位提示（1.4.0，`_test_input_hints`）**：键鼠时 `hint()` 只返回 Shift/F/Esc，手柄时只返回 RB/X/Start；方向键已绑定 `card_1~3`；按下键盘会自动切回键盘键位。
+- **升级卡说明（1.4.0，`_test_upgrade_card_fit`）**：短说明保持 15px；超长说明自动缩到 10~14px，且实测排版高度不超过说明区，不再被卡片底边裁掉。
 - 自杀无人机（`_test_drones`，1.2.0 新增 23 项断言）：成对刷新、屏幕外入场、锁定额度 6、满额停刷、速度 460 + 低转向率、视野内有安全区/商店时停刷、撞玩家 5 伤害并当场解体、近身掠过后被甩开且永久脱锁、脱锁不占锁定名额、5 秒锁定上限、撞敌人 5 伤害后解体、安全区驱离圈推开、贴本体解体、脉冲原地解体、刷新计时器接线
 - 死亡：燃料耗尽 12s 判负、导弹 25 击穿 20 护盾、复活币恢复 8
 - 地图：隐藏路线不回头（每段沿主方向前进）、每段经过天体引力圈、42% 尝试把天体放进两个敌人之间的空白路径且避开安全区/商店/敌人、两个敌人之间必有安全区、安全区离两侧敌人≥1150 且刷新时避开当前敌人、商店比安全区离路线更远；初始安全区/商店/敌人按路线落位；敌人按路线顺序刷新
@@ -72,8 +74,8 @@ RESULT: 248 checks, 0 failed
 
 ## 2. 导出包验证
 
-> **1.3.0**（2026-11-21）：源码自测 **248/248**，Linux / Windows / Android 全部本地重新导出并验证，13 张桌面截图 + 1 张移动端 20:9 截图由导出包重新生成，`dist/` 1.3.0 发行包已打包（含 SHA256SUMS）。
-> Android 本次**已重建**：versionCode **15** / versionName `1.3.0`，用项目密钥签名并通过 v2 + v3 校验。
+> **1.4.0**（2026-11-21）：源码自测 **258/258**，Linux / Windows / Android 全部本地重新导出并验证，13 张桌面截图 + 1 张移动端 20:9 截图由导出包重新生成，`dist/` 1.4.0 发行包已打包（含 SHA256SUMS）。
+> Android 本次**已重建**：versionCode **16** / versionName `1.4.0`，用项目密钥签名并通过 v2 + v3 校验。
 > **未上传到 OpenList**（保持“用户明确要求才发”的约定）。
 
 ### 2.1 Linux（验证打包完整性）
@@ -83,13 +85,13 @@ xvfb-run -a -s "-screen 0 1280x720x24" \
   ./build/linux/EscapeGravity.x86_64 -- --shots=/tmp/shots
 ```
 
-- 1.3.0 导出后在 Xvfb + llvmpipe 下真实运行，退出码 0；**13 张桌面截图**全部由导出包渲染产生（含新增的 `13_aegis` 偏导母舰正面护盾与 `14_twin` 双子中继站 + 超载水雷），已复制到 `docs/shots/`。
-- 导出包内自测：`./build/linux/EscapeGravity.x86_64 --headless -- --selftest` → `RESULT: 248 checks, 0 failed`。
+- 1.4.0 导出后在 Xvfb + llvmpipe 下真实运行，退出码 0；**13 张桌面截图**全部由导出包渲染产生（含 `13_aegis` 偏导母舰正面护盾与 `14_twin` 双子中继站 + 超载水雷），已复制到 `docs/shots/`。
+- 导出包内自测：`./build/linux/EscapeGravity.x86_64 --headless -- --selftest` → `RESULT: 258 checks, 0 failed`。
 - 标题、中文字体、贴图、音频、脚本均从内嵌 PCK 加载；无缺失贴图警告。
-- `build/linux/EscapeGravity.x86_64` = 97,738,280 bytes，ELF x86-64（1.3.0 导出）。
+- `build/linux/EscapeGravity.x86_64` = 97,747,000 bytes，ELF x86-64（1.4.0 导出）。
 - 触屏 20:9 截图另用 `--resolution 2400x1080 -- --touch --shots=...` 生成，取 `04_battle` 作为 `docs/shots/12_touch.png`；触屏按钮仍按“加力 → 技能 → 物品栏”纵向排列，HUD 的改装芯片行在左上角条组下方，不与摇杆/按钮重叠。
 
-### 2.2 Windows（1.3.0 本地导出验证）
+### 2.2 Windows（1.4.0 本地导出验证）
 
 ```bash
 file build/windows/EscapeGravity.exe
@@ -97,10 +99,10 @@ file build/windows/EscapeGravity.exe
 python3 -c "d=open(...).read(); print(b'GDPC' in d[-4096:])"   # True
 ```
 
-- 1.3.0 本地导出：133,422,328 bytes，PE32+ x86-64，尾部 `GDPC` 校验通过；单文件、内嵌 PCK，无外部依赖；文件/产品版本元数据同步升到 `1.3.0.0`。
+- 1.4.0 本地导出：133,431,048 bytes，PE32+ x86-64，尾部 `GDPC` 校验通过；单文件、内嵌 PCK，无外部依赖；文件/产品版本元数据同步升到 `1.4.0.0`。
 - 未做商业代码签名（没有证书），首次运行会有 SmartScreen 提示。
 
-### 2.3 Android（1.3.0 本地重建并签名）
+### 2.3 Android（1.4.0 本地重建并签名）
 
 ```bash
 aapt2 dump badging build/android/EscapeGravity.apk
@@ -108,7 +110,7 @@ apksigner verify --verbose --print-certs build/android/EscapeGravity.apk
 ```
 
 ```
-package: name='com.escapegravity.game' versionCode='15' versionName='1.3.0'
+package: name='com.escapegravity.game' versionCode='16' versionName='1.4.0'
 minSdkVersion:'24'
 targetSdkVersion:'36'
 native-code: 'arm64-v8a'
@@ -119,7 +121,7 @@ Verified using v3 scheme (APK Signature Scheme v3): true
 Number of signers: 1
 ```
 
-- APK：50,959,204 bytes；含全部 `assets/`（贴图、字体、WAV、脚本 `.gdc`、场景）。
+- APK：50,967,396 bytes；含全部 `assets/`（贴图、字体、WAV、脚本 `.gdc`、场景）。
 - 权限：无危险权限（只有 Godot/模板默认项）。
 - 未在真机运行（本机无 Android 设备）；静态检查 + 签名验证通过，Linux 导出包已验证同一套 PCK 的运行时行为。
 - CI 仍会额外导出 `EscapeGravity-debug.apk`（临时调试密钥签名）并上传为 `EscapeGravity-android-debug` 工件，它只是测试包，不是这里用项目密钥签名的发行 APK。
@@ -130,12 +132,12 @@ Number of signers: 1
 
 | 文件 | 大小 |
 |---|---|
-| `EscapeGravity-1.3.0-windows-x86_64.zip` | 61,544,673 bytes |
-| `EscapeGravity-1.3.0-linux-x86_64.tar.gz` | 51,870,215 bytes |
-| `EscapeGravity-1.3.0-android-arm64.apk` | 50,959,204 bytes |
+| `EscapeGravity-1.4.0-windows-x86_64.zip` | 61,553,698 bytes |
+| `EscapeGravity-1.4.0-linux-x86_64.tar.gz` | 51,879,168 bytes |
+| `EscapeGravity-1.4.0-android-arm64.apk` | 50,967,396 bytes |
 | `SHA256SUMS.txt` | 覆盖以上文件与 `ANDROID-安装说明.txt` |
 
-> **1.3.0 未上传到 OpenList**。上一次 NAS 分发仍是 1.0.9：
+> **1.4.0 未上传到 OpenList**。上一次 NAS 分发仍是 1.0.9：
 > - `dist/EscapeGravity-1.0.9-windows-x86_64.zip`：60,168,030 bytes，SHA-256 `b32f54b4…f3cd5f73`
 > - `dist/EscapeGravity-1.0.9-android-arm64.apk`：49,566,968 bytes，SHA-256 `0cbaeea9…db305cc3`
 > - 直链：<https://files.thisisxd.top/d/EscapeGravity-1.0.9-windows-x86_64.zip>、<https://files.thisisxd.top/d/EscapeGravity-1.0.9-android-arm64.apk>
@@ -174,7 +176,7 @@ src/main.gd:209:	await RenderingServer.frame_post_draw
 
 ## 5. 界面检查
 
-> 以下截图均由 **1.3.0 Linux 导出包**重新生成（导出包真实运行，不是编辑器截图）。
+> 以下截图均由 **1.4.0 Linux 导出包**重新生成（导出包真实运行，不是编辑器截图）。
 
 - 16:9（1280×720）：标题、玩法、设置、战斗、暂停、安全区、商店、升级、结算、威胁弧、爆炸、偏导母舰、双子中继站 —— **13 张**截图见 `docs/shots/`；商店截图里能直接看到三货架（补给 1~2 / 战术 3~4 / 黑市 5~7）。
 - 20:9（2400×1080 / 逻辑 1600×720，触屏）：标题按钮按屏幕中心锚定；右侧控制列自下而上为加力 150、技能 92×2、物品栏，代币读数在雷达下方，互不重叠；新增的改装芯片行在左上角条组下方，不侵入摇杆/按钮区域。
@@ -187,7 +189,7 @@ src/main.gd:209:	await RenderingServer.frame_post_draw
 ## 6. 未验证 / 限制
 
 - Android 真机（触屏、帧率、音频输出、刘海/手势条适配）。
-- 实体手柄（代码按 InputMap 标准映射实现，未接真机）。
+- 实体手柄（代码按 InputMap 标准映射实现，未接真机；键位提示的键鼠/手柄切换由自测模拟验证）。
 - 人耳试听（BGM/SFX 为 numpy 合成；已做电平/循环/首尾检查，见 `docs/audio_report.md`）。
 - 长时间运行的内存/性能曲线（交易、深度 20+、200+ 物质、多个导弹）。
 - Windows 实机（无 Wine/Windows 环境）；PE 头、PCK 标记、导出流程已验证。

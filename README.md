@@ -1,4 +1,4 @@
-# Escape Gravity · 1.3.0
+# Escape Gravity · 1.4.0
 
 [![Build](https://github.com/Moonlark-Dev/EscapeGravity/actions/workflows/build.yml/badge.svg)](https://github.com/Moonlark-Dev/EscapeGravity/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -13,6 +13,20 @@
 - 许可：**MIT**（见 [`LICENSE`](LICENSE)；字体与引擎的第三方许可见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)）
 
 ## 更新日志
+
+### 1.4.0 更新
+
+本版按试玩反馈调整成长节奏与操作体验，并修掉导弹穿过敌舰的穿模。
+
+- **升级更慢**：每级所需经验 **20 → 100（×5）**。同样一局里升级次数明显减少，升级卡的分量更重。
+- **燃料槽收紧**：上限 **500 → 100**。安全区仍会补满燃料，**备用能源（+60）**、燃料上限卡（+40 / +80）与「节能巡航」的价值随之上来；滑行仍然免费。
+- **导弹锁定期改为“绕飞 + 实体外壳”**：锁定中把所有敌舰外壳当成障碍，提前 220px 预测航向、在会擦到外壳时改走切线，并硬性禁止弹体穿进外壳。以前那点偏转方向算反了，玩家用引力快速绕一圈时导弹会直接从敌人正中间穿到另一侧；现在它会贴着外壳滑过去。绕不开的导弹仍会在碰撞结算里真的打在外壳上，脱锁后也照常可以撞回发射者——诱导伤害循环不受影响。
+- **双子节点生成间距 ×2**：双子中继站两座之间的生成/公转间距 **750 → 1500px**，两座不再挤在一起。
+- **PC 手柄键位提示**：`Controls` 记录最近一次真正操作的设备（键盘/鼠标 vs 手柄按键/摇杆），键位提示按设备切换：用手柄时只显示手柄键位（左摇杆、RB、Y/B、X、方向键、Start、A），用键鼠时只显示键盘键位。覆盖 HUD、技能角标、物品提示、暂停/商店/升级/替换/觉醒/丢弃/结算面板。
+- **手柄可操作面板**：方向键（←/↑/→/↓）直接选升级/商店/替换/觉醒/丢弃卡，A 在结算界面再来一局，←/→ 在战斗中切换物品；修正 RB 同时绑定「加力」和「切换物品」的冲突（现在 RB 只加力）。
+- **升级选项说明完整显示**：升级卡从 396 加高到 430，说明区从 100 加高到 160，并按 `Font.get_multiline_string_size` 实测排版高度自动缩字号（15 → 最低 10px）；技能替换、商店货架、觉醒二选一共用同一套自适应，长说明不再被卡片底边裁掉。
+
+自测从 **248** 项增加到 **258** 项断言，全部通过。
 
 ### 1.3.0 更新
 
@@ -136,7 +150,7 @@ escape-gravity-release/
 │   ├── meteor.gd / matter.gd / zone.gd / decoy.gd / anchor.gd / fx.gd
 │   ├── assets.gd / audio.gd / store.gd / controls.gd
 │   ├── backdrop.gd           # 视差星云/星点
-│   └── selftest.gd           # 248 项无头断言 + 机器人可玩性验证
+│   └── selftest.gd           # 258 项无头断言 + 机器人可玩性验证
 ├── assets/                   # world / ui / audio / fonts
 ├── tools/                    # 素材生成、后期、构建、打包
 ├── docs/                     # ART.md / DESIGN_MAP.md / QA.md / 资产清单 / 截图
@@ -159,7 +173,7 @@ escape-gravity-release/
 
 ```bash
 godot --headless --path . -- --selftest
-# RESULT: 248 checks, 0 failed
+# RESULT: 258 checks, 0 failed
 ```
 
 ### 界面
