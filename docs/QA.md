@@ -11,17 +11,17 @@
 godot --headless --path . -- --selftest
 ```
 
-完整输出：`docs/selftest_output.txt`（245 项断言 + 机器人明细）。
+完整输出：`docs/selftest_output.txt`（248 项断言 + 机器人明细）。
 
 ```
-RESULT: 245 checks, 0 failed
+RESULT: 248 checks, 0 failed
 ```
 
 **导出包内自测**（同一套脚本，从内嵌 PCK 运行）：
 
 ```bash
 ./build/linux/EscapeGravity.x86_64 --headless -- --selftest
-# RESULT: 245 checks, 0 failed
+# RESULT: 248 checks, 0 failed
 ```
 
 覆盖面：
@@ -72,7 +72,7 @@ RESULT: 245 checks, 0 failed
 
 ## 2. 导出包验证
 
-> **1.3.0**（2026-11-21）：源码自测 **245/245**，Linux / Windows / Android 全部本地重新导出并验证，13 张桌面截图 + 1 张移动端 20:9 截图由导出包重新生成，`dist/` 1.3.0 发行包已打包（含 SHA256SUMS）。
+> **1.3.0**（2026-11-21）：源码自测 **248/248**，Linux / Windows / Android 全部本地重新导出并验证，13 张桌面截图 + 1 张移动端 20:9 截图由导出包重新生成，`dist/` 1.3.0 发行包已打包（含 SHA256SUMS）。
 > Android 本次**已重建**：versionCode **15** / versionName `1.3.0`，用项目密钥签名并通过 v2 + v3 校验。
 > **未上传到 OpenList**（保持“用户明确要求才发”的约定）。
 
@@ -84,7 +84,7 @@ xvfb-run -a -s "-screen 0 1280x720x24" \
 ```
 
 - 1.3.0 导出后在 Xvfb + llvmpipe 下真实运行，退出码 0；**13 张桌面截图**全部由导出包渲染产生（含新增的 `13_aegis` 偏导母舰正面护盾与 `14_twin` 双子中继站 + 超载水雷），已复制到 `docs/shots/`。
-- 导出包内自测：`./build/linux/EscapeGravity.x86_64 --headless -- --selftest` → `RESULT: 245 checks, 0 failed`。
+- 导出包内自测：`./build/linux/EscapeGravity.x86_64 --headless -- --selftest` → `RESULT: 248 checks, 0 failed`。
 - 标题、中文字体、贴图、音频、脚本均从内嵌 PCK 加载；无缺失贴图警告。
 - `build/linux/EscapeGravity.x86_64` = 97,734,440 bytes，ELF x86-64（1.3.0 导出）。
 - 触屏 20:9 截图另用 `--resolution 2400x1080 -- --touch --shots=...` 生成，取 `04_battle` 作为 `docs/shots/12_touch.png`；触屏按钮仍按“加力 → 技能 → 物品栏”纵向排列，HUD 的改装芯片行在左上角条组下方，不与摇杆/按钮重叠。

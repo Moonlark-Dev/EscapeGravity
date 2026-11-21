@@ -119,12 +119,12 @@ escape-gravity-release/
 - **新敌方弹药（1.3.0）**：`Run.roll_enemy_ammo` 决定弹种——深度 <3 只出普通弹，深层导弹巢 35% 子母分裂弹，其余按 `min(0.5, 0.10×(depth-2))` 出二段加速弹。二段加速弹前 1.8 秒 110 px/s / 0.9 rad/s，之后 340 px/s / 0.12 rad/s；子母分裂弹在锁定倒计时结束时 `_split()` 成 3 枚 `frag`（无锁、12 伤、7 秒寿命），不要改成“脱锁平飞”。伤害走 `Missile.dmg`，不要再回退到全局 `MISSILE_DMG_ENEMY`；水雷 `mine` 无锁、90~120 px/s、可被脉冲反推。
 - **精英词缀（1.3.0）**：深层血量斜率是 **+14%/层**（`EG.DEPTH_HP_GROWTH`），精英在 `depth >= 6` 且 `(depth-6) % 4 == 0` 出现，×1.45 血 + 齐射 +1，并带一个词缀：`point_defense`（两颗护卫球，每颗每 1.2 秒挡一发，速度 ≥280 的导弹凿穿）、`phase_blink`（过热结束时瞬移到玩家侧翼 900px，双子不抽此词缀）、`volatile`（血量 ×0.7，每次过热向四周抛 6 枚水雷）。别再改回“每 5 层单纯 ×1.6 血”。
 - **核心改装（1.3.0）**：`Run.mods: Dictionary`（id→层数，上限 3），`Defs.MODS` 12 张，分 `gravity/deceive/billiard/trap` 四流派。效果都集中在 `Run._update_mods`、`on_missile_unlock`、`damage_enemy`（连锁殉爆/相对论/超载）、`_resolve_collisions`（回收反应堆）、`_cast_pulse`（质量投射器/木马协议）、`_resonance_tick`（引力锚×诱饵重叠）、`on_decoy_gone`/`on_anchor_gone`（甩射）与 `hit_ship_by_meteor`（引力碎星带）。`ship.boost_free` 由 `_update_mods` 每帧写入，`ship.fuel_cost_mult` 由节能巡航维护。
-- **技能觉醒（1.3.0）**：技能 Lv3 后 `Defs.roll_upgrades` 给 `skill_awaken` 卡，`Run._apply_awaken` 把 `s["awaken"]` 记在技能字典上并把等级设 4；`_cast_*` 用 `skill_awaken("pulse")` 等分支。**不要**把觉醒做成独立技能槽。技能槽满时 `skill_new` 卡仍会刷出并带 `replace=true`，`choose_upgrade` 转入 `State.REPLACE_SKILL` 弹双槽对比，替换后新技能继承原槽一半等级（向下取整、至少 1）。
+- **技能觉醒（1.3.0）**：技能 Lv3 后 `Defs.roll_upgrades` 给 `skill_awaken` 卡；有两条分支的技能（脉冲）先出通用卡，选中后进入 `State.AWAKEN_CHOICE` 二选一（`ui.show_awaken_choice`），单分支技能直接落地。`Run._apply_awaken` 把 `s["awaken"]` 记在技能字典上并把等级设 4；`_cast_*` 用 `skill_awaken("pulse")` 等分支。**不要**把觉醒做成独立技能槽。技能槽满时 `skill_new` 卡仍会刷出并带 `replace=true`，`choose_upgrade` 转入 `State.REPLACE_SKILL` 弹双槽对比，替换后新技能继承原槽一半等级（向下取整、至少 1）。
 - **升级池（1.3.0）**：`fuel_25` 已删除，换成 `eco_cruise`（油耗 ×0.88，叠到 0.5 为止，`ship.fuel_cost_mult` 同步）；燃料上限卡 +40/+80；`slot` 权重背包满 11 / 未满 6；满油时不再出燃料卡这条语义由“删除燃料卡”取代。**别再往池子里加回 `fuel_25`**。
 - **商店三货架（1.3.0）**：`_roll_shop` 固定 3 行——补给位 1~2 代币（护盾补片/备用能源/现场满额维修）、战术道具位 3~4（干扰弹/诱饵弹/紧急充能/引力水雷/加力灌注）、黑市 5~7（必出改装或觉醒）。offer 字典用 `kind`（item/service/mod/awaken）+ `title/desc/rarity/icon/shelf`，`ui._make_shop_row` 只读这些字段。背包满时购买**不再拒买**，直接进入 `State.DESTROY` 丢弃替换，替换后回到商店面板（`destroy_and_take` 里判断 `shop_inside`）。
 
 - **平衡**：初始燃料 **500**；推进 4/s、加力 **4.8/s（1.2×）**（均按实际 Δv），3× 推力，引擎极速 150 / 加力 192，初始槽 **6.6s**；护盾 20。
-- **状态机**：`PLAYING / LEVELUP / SHOP / DESTROY / DEAD / REPLACE_SKILL`；暂停由 `main.gd` 控制，`run.paused` 冻结模拟。`REPLACE_SKILL` 是技能槽满时选新技能的双槽对比面板，`choose_skill_replace` / `cancel_skill_replace` 负责收尾。
+- **状态机**：`PLAYING / LEVELUP / SHOP / DESTROY / DEAD / REPLACE_SKILL / AWAKEN_CHOICE`；暂停由 `main.gd` 控制，`run.paused` 冻结模拟。`REPLACE_SKILL` 是技能槽满时选新技能的双槽对比面板，`choose_skill_replace` / `cancel_skill_replace` 负责收尾；`AWAKEN_CHOICE` 是双分支技能（脉冲）的觉醒二选一，`choose_awaken` / `cancel_awaken_choice` 负责收尾，取消同样退还这次升级。
 - **存档**：`user://escape_gravity.cfg` 只保存设置与历史记录；没有中途存档 / 云存档 / meta 解锁。
 
 ## 常用命令
@@ -169,7 +169,7 @@ python3 tools/make_dist.py --platforms windows,linux
 
 改动运行逻辑后，至少完成：
 
-1. `RESULT: 245 checks, 0 failed`；导出包内再跑一次 `./build/linux/EscapeGravity.x86_64 --headless -- --selftest`。
+1. `RESULT: 248 checks, 0 failed`；导出包内再跑一次 `./build/linux/EscapeGravity.x86_64 --headless -- --selftest`。
 2. 用导出包重新生成截图；桌面 13 张（含 `13_aegis` / `14_twin`）+ 移动端 20:9 一张，检查标题居中、触屏按钮不重叠。
 3. 无运行时绘制审计（应只有 `RenderingServer.frame_post_draw` 一条命中）：
    ```bash

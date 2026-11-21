@@ -148,7 +148,7 @@
 
 ### 5.2 技能超载觉醒（1.3.0）
 
-技能达到 Lv3 后，升级池可刷出 `skill_awaken`（`Defs.AWAKENINGS`）。`Run._apply_awaken` 把 `s["awaken"]` 记在技能字典上、等级设 4，`_cast_*` 用 `skill_awaken(id)` 分支；不是独立技能槽。
+技能达到 Lv3 后，升级池可刷出 `skill_awaken`（`Defs.AWAKENINGS`）。有两条分支的技能（脉冲）先给一张“二选一”通用卡，选中后进入 `State.AWAKEN_CHOICE`，由 `ui.show_awaken_choice` 列出两条分支的全名与说明；单分支技能直接落地。`Run._apply_awaken` 把 `s["awaken"]` 记在技能字典上、等级设 4，`_cast_*` 用 `skill_awaken(id)` 分支；不是独立技能槽。取消选择会退还这次升级（重摇）。
 
 | 觉醒 | 技能 | 效果 |
 |---|---|---|
