@@ -903,6 +903,133 @@ def ic_charge(A):
     A.dot((72, 33), 3.0, C((255, 235, 190), 255))
 
 
+def ic_item_mine(A):
+    """引力水雷道具：紫色球体 + 三条环绕轨道 + 三根短刺。"""
+    c = (64, 64)
+    A.arc(c, 44, 196, 344, C(PURPLE, 130), 3.8)
+    A.arc(c, 44, 16, 164, C(PURPLE, 130), 3.8)
+    A.arc(c, 33, 22, 158, C((186, 158, 255), 120), 3.0)
+    A.arc(c, 33, 202, 338, C((186, 158, 255), 95), 3.0)
+    for ang in (-90, 30, 150):
+        a = math.radians(ang)
+        p0 = (64 + 21 * math.cos(a), 64 + 21 * math.sin(a))
+        p1 = (64 + 30 * math.cos(a), 64 + 30 * math.sin(a))
+        A.line([p0, p1], C((208, 178, 255), 235), 4.4)
+        A.dot((64 + 34 * math.cos(a), 64 + 34 * math.sin(a)), 3.4,
+              C((240, 214, 255), 255))
+    A.circle(c, 20, C(PURPLE, 255), 5.2, fill=C((44, 20, 82), 215))
+    A.circle(c, 11, C((186, 156, 255), 190), 2.4)
+    A.dot((60, 59), 4.0, C((246, 236, 255), 255))
+    star4(A, 64, 64, 6.0, C((255, 246, 255), 190), 0.30)
+
+
+def ic_service(A):
+    """现场满额维修：护盾 + 扳手。"""
+    shield = [(64, 24), (95, 37), (95, 64), (64, 100), (33, 64), (33, 37)]
+    A.poly(shield, C(MINT, 255), 5.2, fill=C((10, 42, 33), 195))
+    A.poly([(64, 34), (86, 43), (86, 62), (64, 90), (42, 62), (42, 43)],
+           C((130, 255, 205), 110), 2.2, close=True)
+    # wrench: open C-head + slim handle, laid across the shield
+    A.line([(44, 86), (66, 64)], C((228, 255, 243), 252), 6.4)
+    A.arc((77, 51), 11, 36, 296, C((228, 255, 243), 252), 5.6)
+    A.dot((44, 86), 4.4, C((228, 255, 243), 240))
+    A.dot((74, 34), 2.6, C((16, 74, 56), 210))
+
+
+def ic_mod_gravity(A):
+    """引力弹弓流改装芯片：箭头绕行星 + 速度线。"""
+    cx, cy = 64.0, 66.0
+    A.circle((58, 70), 18, C((176, 238, 255), 235), 4.6, fill=C((9, 40, 54), 205))
+    A.arc((58, 70), 9.5, 200, 340, C((140, 235, 255), 150), 2.2)
+    A.dot((52, 64), 2.8, C((190, 246, 255), 200))
+    # slingshot trajectory: swings over the planet and leaves to the upper right
+    A.arc((cx, cy), 38, 186, 300, C(CYAN, 235), 5.2)
+    a = math.radians(305.0)
+    ex, ey = cx + 38 * math.cos(a), cy + 38 * math.sin(a)
+    rad = (math.cos(a), math.sin(a))
+    tan = (-math.sin(a), math.cos(a))
+    tip = (ex + tan[0] * 15.0, ey + tan[1] * 15.0)
+    b1 = (ex + rad[0] * 12.0 - tan[0] * 3.0, ey + rad[1] * 12.0 - tan[1] * 3.0)
+    b2 = (ex - rad[0] * 12.0 - tan[0] * 3.0, ey - rad[1] * 12.0 - tan[1] * 3.0)
+    A.poly([tip, b1, b2], C(CYAN, 255), 2.2, fill=C((196, 252, 255), 250))
+    for dy, al in ((-9, 120), (1, 190), (11, 120)):
+        A.line([(18, 88 + dy), (38, 88 + dy)], C(CYAN, al), 4.2)
+
+
+def ic_mod_deceive(A):
+    """欺骗劫持流：断裂/偏移的锁定准星 + 诱饵点。"""
+    c = (60, 60)
+    A.arc(c, 33, -42, 58, C(MAGENTA, 240), 5.2)
+    A.arc(c, 33, 82, 172, C(MAGENTA, 240), 5.2)
+    A.arc(c, 33, 196, 244, C(MAGENTA, 120), 5.2)
+    # extruded radar ticks, offset from the reticle centre
+    for ang in (-90, 20):
+        a = math.radians(ang)
+        p0 = (c[0] + 39 * math.cos(a), c[1] + 39 * math.sin(a))
+        p1 = (c[0] + 45 * math.cos(a), c[1] + 45 * math.sin(a))
+        A.line([p0, p1], C((255, 150, 195), 220), 3.6)
+    # crosshair sits off-centre -> the lock is spoiled
+    A.line([(74, 54), (74, 84)], C((255, 186, 214), 235), 3.8)
+    A.line([(59, 69), (89, 69)], C((255, 186, 214), 235), 3.8)
+    A.dot((74, 69), 4.0, C(WHITE, 255))
+    A.dot((34, 96), 5.0, C((255, 204, 228), 255))
+    A.circle((34, 96), 10, C(MAGENTA, 150), 2.4)
+    A.line([(41, 91), (56, 78)], C(MAGENTA, 110), 2.2)
+
+
+def ic_mod_billiard(A):
+    """星体台球流：陨石 + 台球撞击线。"""
+    rock = [(40, 42), (64, 38), (82, 52), (88, 74), (76, 94), (52, 100),
+            (34, 88), (30, 60)]
+    A.poly(rock, C(AMBER, 255), 5.0, fill=C((58, 34, 10), 225))
+    A.circle((52, 60), 8, C((255, 214, 156), 140), 2.4)
+    A.circle((72, 80), 5, C((255, 214, 156), 110), 2.0)
+    A.dot((44, 80), 2.6, C((255, 226, 176), 160))
+    A.line([(104, 22), (78, 43)], C((255, 240, 208), 255), 4.6)
+    star4(A, 72, 45, 13, C((255, 242, 214), 235), 0.20)
+    A.arc((72, 45), 17, -55, 55, C(AMBER, 150), 3.0)
+    for dy in (-16, 4, 22):
+        A.line([(96, 84 + dy), (108, 76 + dy)], C((255, 196, 110), 120), 3.0)
+    A.dot((30, 50), 3.0, C((255, 220, 160), 200))
+    A.dot((26, 70), 2.4, C((255, 210, 145), 170))
+
+
+def ic_mod_trap(A):
+    """陷阱阵列流：三角锚点 + 环绕弧线。"""
+    c = (64, 64)
+    A.arc(c, 42, 198, 342, C(PURPLE, 145), 4.4)
+    A.arc(c, 42, 18, 162, C(PURPLE, 145), 4.4)
+    A.arc(c, 30, 200, 340, C((178, 156, 255), 95), 3.0)
+    A.arc(c, 30, 20, 160, C((178, 156, 255), 95), 3.0)
+    for ang in (-90, 30, 150):
+        a = math.radians(ang)
+        ca, sa = math.cos(a), math.sin(a)
+        px, py = -sa, ca
+        tip = (64 + 34 * ca, 64 + 34 * sa)
+        b1 = (64 + 20 * ca + 9 * px, 64 + 20 * sa + 9 * py)
+        b2 = (64 + 20 * ca - 9 * px, 64 + 20 * sa - 9 * py)
+        A.poly([tip, b1, b2], C((196, 176, 255), 245), 3.6, fill=C((46, 24, 86), 190))
+        A.dot((64 + 26 * ca, 64 + 26 * sa), 2.8, C((230, 214, 255), 235))
+    A.circle(c, 11, C((170, 140, 255), 200), 3.2)
+    A.dot(c, 4.0, C((246, 240, 255), 255))
+
+
+def ic_awaken(A):
+    """超载觉醒：同心爆发环 + 闪电。"""
+    c = (64, 64)
+    A.arc(c, 46, -46, 46, C(AMBER, 150), 4.4)
+    A.arc(c, 46, 134, 226, C(AMBER, 150), 4.4)
+    A.arc(c, 46, 200, 340, C(MAGENTA, 95), 3.0)
+    A.circle(c, 34, C(AMBER, 120), 3.2)
+    A.circle(c, 24, C((255, 196, 110), 190), 3.4)
+    bolt = [(78, 24), (42, 68), (62, 68), (52, 106), (90, 56), (66, 56)]
+    A.poly(bolt, C(MAGENTA, 235), 2.6, fill=C((255, 198, 102), 250))
+    A.poly([(72, 38), (54, 64), (64, 64), (58, 88), (78, 58), (67, 58)],
+           C((255, 248, 224), 252), 0, fill=C((255, 246, 218), 240))
+    A.dot((78, 24), 3.4, C((255, 238, 190), 255))
+    A.dot((52, 106), 3.0, C((255, 226, 170), 235))
+
+
 def icon_drawings():
     return {
         "icon_skill_pulse": (ic_pulse, CYAN),
@@ -913,6 +1040,13 @@ def icon_drawings():
         "icon_item_flare": (ic_flare, AMBER),
         "icon_item_decoy": (ic_item_decoy, MAGENTA),
         "icon_item_charge": (ic_charge, AMBER),
+        "icon_item_mine": (ic_item_mine, PURPLE),
+        "icon_service": (ic_service, MINT),
+        "icon_mod_gravity": (ic_mod_gravity, CYAN),
+        "icon_mod_deceive": (ic_mod_deceive, MAGENTA),
+        "icon_mod_billiard": (ic_mod_billiard, AMBER),
+        "icon_mod_trap": (ic_mod_trap, PURPLE),
+        "icon_awaken": (ic_awaken, AMBER),
     }
 
 
@@ -1380,6 +1514,10 @@ MANIFEST_UI = [
     ("icon_skill_dash.png", (128, 128)), ("icon_skill_decoy.png", (128, 128)),
     ("icon_item_fuel.png", (128, 128)), ("icon_item_flare.png", (128, 128)),
     ("icon_item_decoy.png", (128, 128)), ("icon_item_charge.png", (128, 128)),
+    ("icon_item_mine.png", (128, 128)), ("icon_service.png", (128, 128)),
+    ("icon_mod_gravity.png", (128, 128)), ("icon_mod_deceive.png", (128, 128)),
+    ("icon_mod_billiard.png", (128, 128)), ("icon_mod_trap.png", (128, 128)),
+    ("icon_awaken.png", (128, 128)),
     ("icon_token.png", (96, 96)),
     ("icon_shield.png", (64, 64)), ("icon_exp.png", (64, 64)),
     ("icon_fuel.png", (64, 64)), ("icon_boost.png", (64, 64)),

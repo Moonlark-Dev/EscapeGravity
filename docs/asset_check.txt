@@ -1,3 +1,5 @@
-world: expected=40 present=47 missing=[]
-ui:    expected=50 present=58 missing=[]
+world: expected=56 present=56 missing=[]
+ui:    expected=65 present=65 missing=[]
 audio: expected=23 present=23 missing=[]
+# manifest 分组行：world 49 行（meteor_1..3 / explosion_0..7 等展开后 56 个文件）
+#                  ui 56 行（icon 组展开后 65 个文件）

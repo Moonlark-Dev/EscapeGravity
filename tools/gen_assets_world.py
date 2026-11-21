@@ -2069,6 +2069,800 @@ def build_warp_ring():
 
 
 # ==========================================================================
+# fleet additions (Aegis carrier / gravity rig / relays / heavy ordnance)
+# ==========================================================================
+def _radial_poly(cx, cy, ctrl, n=96, scale=1.0):
+    """Faceted closed hull from (deg, radius) control points (-180 .. 180)."""
+    degs = np.array([c[0] for c in ctrl], np.float32)
+    rads = np.array([c[1] for c in ctrl], np.float32)
+    angs = np.linspace(-180.0, 180.0, n, endpoint=False)
+    rr = np.interp(angs, degs, rads) * scale
+    th = np.radians(angs)
+    return [(float(cx + r * math.cos(t)), float(cy + r * math.sin(t)))
+            for r, t in zip(rr, th)]
+
+
+def _arm_frame(xx, yy, cx, cy, n, phase):
+    """Fold the canvas into one of n symmetric wedge frames (turret style)."""
+    dx = xx - cx
+    dy = yy - cy
+    r = np.sqrt(dx * dx + dy * dy)
+    ang = np.arctan2(dy, dx)
+    step = TAU / n
+    dang = ((ang - phase + step * 0.5) % step) - step * 0.5
+    return r * np.cos(dang), r * np.sin(dang), r, ang, dang
+
+
+def _spiral_pts(cx, cy, base, r0, r1, sweep, steps=9):
+    out = []
+    for i in range(steps):
+        t = i / float(steps - 1)
+        a = base + sweep * t
+        rr = r0 + (r1 - r0) * t
+        out.append((cx + math.cos(a) * rr, cy + math.sin(a) * rr))
+    return out
+
+
+CARRIER_CTRL = [
+    (-180.0, 316.0), (-168.0, 350.0), (-142.0, 364.0), (-118.0, 350.0),
+    (-96.0, 374.0), (-74.0, 354.0), (-52.0, 370.0), (-34.0, 354.0),
+    (-18.0, 372.0), (0.0, 404.0), (18.0, 372.0), (34.0, 354.0),
+    (52.0, 370.0), (74.0, 354.0), (96.0, 374.0), (118.0, 350.0),
+    (142.0, 364.0), (168.0, 350.0), (180.0, 316.0),
+]
+
+
+def build_carrier():
+    """Aegis carrier: bow (+X) energy rail, layered armour, violet stern core."""
+    w = h = 1024
+    ss = 2
+    cx = cy = 512.0
+    tex = noise_tex(w, h, 30.0, 2, seed=811, res=512)
+    tex2 = noise_tex(w, h, 8.0, 3, seed=827, res=512)
+
+    hull = _radial_poly(cx, cy, CARRIER_CTRL, 96)
+    h_mid = _radial_poly(cx, cy, CARRIER_CTRL, 96, 0.880)
+    h_in = _radial_poly(cx, cy, CARRIER_CTRL, 96, 0.700)
+    h_deck = _radial_poly(cx, cy, CARRIER_CTRL, 96, 0.500)
+    bow_cap = [(cx + 404.0, cy), (cx + 370.0, cy - 60.0), (cx + 330.0, cy - 84.0),
+               (cx + 346.0, cy), (cx + 330.0, cy + 84.0), (cx + 370.0, cy + 60.0)]
+
+    def fn(xx, yy):
+        b = Block(xx.shape)
+        dx = xx - cx
+        dy = yy - cy
+        r = np.sqrt(dx * dx + dy * dy)
+        ang = np.arctan2(dy, dx)
+        lam = clamp01(0.5 - (dx / 512.0 * 0.42 + dy / 512.0 * 0.58))
+        grain = tex.at(xx / w, yy / h)
+        blotch = tex2.at(xx / w, yy / h)
+        lamn = clamp01(lam * (0.92 + 0.12 * grain) + 0.06 * (blotch - 0.5))
+
+        def cc(v):
+            return C(v) if isinstance(v, str) else np.asarray(v, np.float32)
+
+        def plate(mask, lo, hi, spec=0.45, spec_col="A6C2D6"):
+            b.over(mask, C("05080D"))
+            b.over_grad(mask, cc(lo), cc(hi), clamp01(1.0 - lamn))
+            b.add(mask * clamp01((lamn - 0.60) * 2.6) * spec, cc(spec_col), 0.9)
+
+        # ---- silhouette + base armour (kept dark; the belts carry the value)
+        d = sd_poly(xx, yy, hull)
+        body = aa(d)
+        b.over(aa(d + 4.5), C("03060B"))
+        b.over(aa(d + 1.0), C("070D15"))
+        b.over_grad(body, C("101B26"), C("070C13"), clamp01(lamn * 1.05))
+        b.over(np.exp(-((d + 1.3) / 1.4) ** 2.0), C("33506A"), 0.55)
+        b.over(np.exp(-((d + 0.35) / 0.55) ** 2.0) * 0.75, C("7EA4BC"), 0.5)
+
+        # ---- three stepped armour belts that follow the hull outline
+        for (poly, lo, hi, spec) in ((h_mid, "161F2B", "3A5064", 0.40),
+                                     (h_in, "18222E", "42606F", 0.40),
+                                     (h_deck, "1B2733", "4A6876", 0.32)):
+            dd = sd_poly(xx, yy, poly)
+            plate(aa(dd), lo, hi, spec)
+            b.over(np.exp(-((dd + 0.7) / 0.75) ** 2.0), C("8AACC2"), 0.40)
+            b.over(np.exp(-((dd - 1.2) / 2.0) ** 2.0) * 0.85, C("04070C"), 0.75)
+
+        # ---- facet seams (18 wedges) + belt dash marks
+        seam = np.exp(-((np.abs(((ang / TAU * 18.0) % 1.0) - 0.5) - 0.5) / 0.0075) ** 2.0)
+        b.over(seam * body * aa(d - 8.0) * 0.55, C("04080E"), 0.6)
+        dash = sstep(-0.45, 0.20, np.sin(ang * 30.0))
+        belt = np.exp(-((r - 300.0) / 1.4) ** 2.0) * dash * body
+        b.over(belt * 0.7, C("060C14"), 0.55)
+        b.over(np.exp(-((r - 356.0) / 1.1) ** 2.0) * body * 0.6, C("08101A"), 0.55)
+
+        # ---- flight deck cut into the inner belt
+        rw = sd_box(xx, yy, cx + 40.0, cy, 138.0, 60.0, 22.0)
+        b.over(aa(rw + 4.0), C("04070B"))
+        b.over(aa(rw), C("09111A"))
+        b.over_grad(aa(rw - 5.0), C("0D1720"), C("060B12"), clamp01(1.0 - lamn))
+        b.over(np.exp(-((rw + 2.2) / 1.3) ** 2.0), C("3A5468"), 0.55)
+        b.over(np.exp(-((rw + 2.2) / 0.5) ** 2.0) * 0.6, C("94B8CC"), 0.4)
+        for sy in (-1.0, 1.0):
+            ys = cy + sy * 52.0
+            b.add(np.exp(-((yy - ys) / 1.3) ** 2.0) * sstep(cx - 70.0, cx - 35.0, xx)
+                  * sstep(cx + 155.0, cx + 120.0, xx) * 0.85, CYAN, 0.8)
+        for gx in (-40.0, 10.0, 60.0, 110.0):
+            b.over(aa(sd_box(xx, yy, cx + gx, cy, 1.7, 33.0, 1.7)) * 0.5,
+                   C("2C465E"), 0.6)
+
+        # ---- command hub at the aft end of the deck
+        hubc = (cx - 74.0, cy)
+        hubd = sd_hex(xx, yy, hubc[0], hubc[1], 62.0, math.radians(30))
+        b.over(aa(hubd + 3.0), C("04070B"))
+        plate(aa(hubd), "19242F", "48647A", 0.45)
+        b.over(np.exp(-((hubd + 0.8) / 1.0) ** 2.0), C("8FB2C6"), 0.45)
+        hh = sd_hex(xx, yy, hubc[0], hubc[1], 34.0, math.radians(30))
+        b.over(aa(hh), C("131E29"))
+        b.over(np.exp(-((hh + 1.0) / 1.1) ** 2.0), C("5A7E96"), 0.6)
+        b.add(np.exp(-((hh + 1.0) / 1.6) ** 2.0) * 0.5, CYAN, 0.65)
+
+        # ---- bow wedge plates (thicker nose armour)
+        bd = sd_poly(xx, yy, bow_cap)
+        b.over(np.exp(-((bd - 1.5) / 2.4) ** 2.0) * 0.7, C("04070C"), 0.7)
+        plate(aa(bd), "22303C", "4E6A7E", 0.5)
+        b.over(np.exp(-((bd + 0.8) / 0.9) ** 2.0), C("A6C6DA"), 0.5)
+        b.over(np.exp(-((bd + 2.6) / 2.0) ** 2.0) * 0.6, CYAN, 0.28)
+        seam_b = np.exp(-((np.abs(((ang / TAU * 8.0) % 1.0) - 0.5) - 0.5) / 0.012) ** 2.0)
+        b.over(seam_b * aa(bd) * 0.5, C("05090F"), 0.55)
+        # nose sensor slit
+        slit = np.exp(-((yy - cy) / 1.6) ** 2.0) * sstep(348.0, 358.0, xx) * sstep(400.0, 390.0, xx)
+        b.add(slit * 0.9, CYAN, 0.9)
+        b.add(slit * 0.5, C("E8FFFF"), 0.7)
+
+        # ---- cyan energy rail at the bow: two arcs over +-50 deg
+        span = sstep(math.radians(50.0), math.radians(43.0), ang_dist(ang, 0.0))
+        rail_o = np.exp(-((r - 330.0) / 2.1) ** 2.0) * span * aa(d - 3.0)
+        rail_i = np.exp(-((r - 306.0) / 1.6) ** 2.0) * span * aa(d - 3.0)
+        for rl, amp in ((rail_o, 1.0), (rail_i, 0.72)):
+            b.over(rl * amp, C("9FF4FF"), 0.95)
+            b.over(rl * amp * 0.55, WHITE, 0.85)
+            b.add(rl * amp * 0.85, CYAN, 0.95)
+        conn = np.exp(-((np.abs(((ang / TAU * 42.0) % 1.0) - 0.5) - 0.5) / 0.022) ** 2.0)
+        bar = sstep(302.0, 307.0, r) * sstep(334.0, 329.0, r)
+        b.add(conn * bar * span * 0.55, CYAN, 0.8)
+        b.add(np.exp(-((r - 318.0) / 40.0) ** 2.0) * span * 0.28, CYAN, 0.5)
+        for sgn in (-1.0, 1.0):
+            ea = math.radians(50.0) * sgn
+            ex = cx + math.cos(ea) * 318.0
+            ey = cy + math.sin(ea) * 318.0
+            nd = np.exp(-(((xx - ex) ** 2 + (yy - ey) ** 2) / 90.0))
+            b.add(clamp01(nd * 1.1), CYAN, 0.95)
+            b.over(clamp01(nd * 1.25), C("F0FEFF"), 0.8)
+            b.over(aa(sd_circle(xx, yy, ex, ey, 9.0)) - aa(sd_circle(xx, yy, ex, ey, 5.4)),
+                   C("BFF4FF"), 0.55)
+
+        # ---- deck consoles + hatch greebles
+        for (gx, gy) in ((-10.0, -118.0), (-10.0, 118.0), (116.0, -118.0), (116.0, 118.0)):
+            gd = sd_box(xx, yy, cx + gx, cy + gy, 30.0, 11.0, 3.0)
+            b.over(aa(gd), C("0E1822"))
+            b.over(np.exp(-((gd + 0.6) / 0.8) ** 2.0), C("3E5A6E"), 0.5)
+            b.add(aa(sd_box(xx, yy, cx + gx, cy + gy, 22.0, 1.3, 0.6)) * 0.55, CYAN, 0.5)
+        for (gx, gy, gw, gh) in ((-150.0, -60.0, 22.0, 34.0), (-150.0, 60.0, 22.0, 34.0),
+                                 (190.0, 0.0, 12.0, 26.0)):
+            gd = sd_box(xx, yy, cx + gx, cy + gy, gw, gh, 4.0)
+            b.over(aa(gd), C("101A24"))
+            b.over(np.exp(-((gd + 0.6) / 0.7) ** 2.0), C("3A5364"), 0.45)
+
+        # ---- stern: violet radiator core with four fins
+        cxs, cys = cx - 190.0, cy
+        rc = np.hypot(xx - cxs, yy - cys)
+        b.over(aa(sd_circle(xx, yy, cxs, cys, 57.0)), C("04070C"))
+        for k in range(4):
+            fy = cys + (k - 1.5) * 25.0
+            fd = sd_box(xx, yy, cxs, fy, 44.0, 7.0, 3.0)
+            b.over(aa(fd), C("1B1029"))
+            b.over(np.exp(-((fd + 0.7) / 0.9) ** 2.0), C("8B5CF6"), 0.55)
+        b.over(aa(sd_circle(xx, yy, cxs, cys, 34.0)), C("220F35"))
+        b.over_grad(aa(sd_circle(xx, yy, cxs, cys, 28.0)), C("6C3ED0"), C("241040"),
+                    clamp01(1.0 - lamn))
+        b.over(np.exp(-((rc - 34.0) / 1.5) ** 2.0), PURPLE, 0.9)
+        b.over(np.exp(-((rc - 34.0) / 0.55) ** 2.0), C("E0D4FF"), 0.6)
+        b.add(clamp01(np.exp(-(rc / 22.0) ** 2.0) * 1.05), MAGENTA, 0.9)
+        b.over(clamp01(np.exp(-(rc / 13.0) ** 2.0) * 1.05), C("FFE6F2"), 0.85)
+
+        # ---- twin exhaust bells at the stern
+        for sgn in (-1.0, 1.0):
+            nx0 = cx - 258.0
+            ny0 = cy + sgn * 78.0
+            nd = sd_circle(xx, yy, nx0, ny0, 30.0)
+            b.over(aa(nd + 4.0), C("04070C"))
+            b.over(aa(nd), C("0B1119"))
+            b.over_grad(aa(nd - 7.0), C("22303E"), C("0C141D"), clamp01(1.0 - lamn))
+            b.over(np.exp(-((nd + 1.5) / 1.2) ** 2.0), C("8B5CF6"), 0.9)
+            b.over(np.exp(-((np.hypot(xx - nx0, yy - ny0) - 12.0) / 1.4) ** 2.0),
+                   PURPLE, 0.85)
+            gl = np.exp(-(((xx - nx0 + 6.0) / 9.0) ** 2 + ((yy - ny0) / 11.0) ** 2))
+            b.add(clamp01(gl * 1.25), PURPLE, 0.95)
+            b.over(clamp01(gl * 1.15), C("E6DAFF"), 0.7)
+
+        # ---- running lights along the flanks
+        for k in range(6):
+            a0 = math.radians(-120.0 + k * 48.0)
+            lx = cx + math.cos(a0) * 336.0
+            ly = cy + math.sin(a0) * 336.0
+            nd = np.exp(-(((xx - lx) ** 2 + (yy - ly) ** 2) / 22.0))
+            b.add(clamp01(nd * 0.8), CYAN, 0.7)
+        return b.to_array()
+
+    def solid(xx, yy):
+        return aa(sd_poly(xx, yy, hull))
+
+    def gmask(xx, yy):
+        return aa(sd_poly(xx, yy, hull) + 2.0)
+
+    def rail_glow(xx, yy):
+        ang = np.arctan2(yy - cy, xx - cx)
+        r = np.hypot(xx - cx, yy - cy)
+        span = sstep(math.radians(52.0), math.radians(40.0), ang_dist(ang, 0.0))
+        return clamp01(np.exp(-((r - 318.0) / 26.0) ** 2.0) * span)
+
+    def stern_glow(xx, yy):
+        # tight enough that the violet spill stays inside the hull silhouette
+        r = np.hypot(xx - cx + 210.0, yy - cy)
+        return clamp01(np.exp(-(r / 46.0) ** 2.0))
+
+    img = make(w, h, fn, ss=ss, glows=[(gmask, 5.0, CYAN, 0.55, solid),
+                                       (gmask, 17.0, C("1E6C8C"), 0.35, solid),
+                                       (rail_glow, 7.0, CYAN, 1.0),
+                                       (stern_glow, 9.0, PURPLE, 0.55)])
+    return save(finish(img, w, h), "carrier.png", w, h)
+
+
+def build_shield_arc():
+    """120 deg (X+-60) deflector band; concentric with the canvas, tintable."""
+    w = h = 768
+    cx = cy = 384.0
+    Rm = 330.0
+    span = math.radians(60.0)
+
+    def fn(xx, yy):
+        b = Block(xx.shape)
+        r = np.hypot(xx - cx, yy - cy)
+        ang = np.arctan2(yy - cy, xx - cx)
+        fade = sstep(352.0, 340.0, r)
+        edge = sstep(span, math.radians(44.0), ang_dist(ang, 0.0))
+        core = np.exp(-((r - Rm) / 8.2) ** 2.0) * edge * fade
+        halo = np.exp(-((r - Rm) / 13.0) ** 2.0) * edge * fade
+        body = np.exp(-((r - Rm) / 13.0) ** 4.0) * edge * fade
+        b.over(clamp01(body * 0.34), ICE, 0.9)
+        b.over(clamp01(core * 0.92), C("EAFEFF"), 1.0)
+        b.over(clamp01(core * 0.50 + halo * 0.26), WHITE, 0.85)
+        b.add(clamp01(halo * 0.30), CYAN, 0.5)
+        # inner facet line (gives the band a two-layer feel)
+        inner = np.exp(-((r - (Rm - 10.0)) / 1.1) ** 2.0) * edge * fade
+        b.over(inner * 0.45, C("CDEFFF"), 0.55)
+        # outer chromatic fringe so the frontier reads as an energy field
+        b.add(np.exp(-((r - (Rm + 8.0)) / 2.6) ** 2.0) * edge * fade * 0.35, CYAN, 0.5)
+        # slightly hotter end segments, softly dissolving into the fade
+        for sgn in (-1.0, 1.0):
+            ea = np.exp(-(ang_dist(ang, span * sgn) / 0.05) ** 2.0)
+            em = ea * edge * np.exp(-((r - Rm) / 15.0) ** 2.0) * fade
+            b.over(clamp01(em * 0.55), C("F4FFFF"), 0.85)
+            b.add(clamp01(em * 0.45), CYAN, 0.6)
+        return b.to_array()
+
+    img = make(w, h, fn, ss=2)
+    return save(finish(img, w, h), "shield_arc.png", w, h)
+
+
+def build_singularity_rig():
+    """Gravity-well rig: three cold-steel rings, violet spiral arms, magenta core."""
+    w = h = 768
+    ss = 2
+    cx = cy = 384.0
+    tex = noise_tex(w, h, 26.0, 2, seed=849, res=384)
+    arms = []
+    for k in range(3):
+        base = k * TAU / 3.0 + math.radians(90)
+        arms.append(_spiral_pts(cx, cy, base, 292.0, 116.0, 1.78, steps=13))
+
+    def fn(xx, yy):
+        b = Block(xx.shape)
+        dx = xx - cx
+        dy = yy - cy
+        r = np.sqrt(dx * dx + dy * dy)
+        ang = np.arctan2(dy, dx)
+        lam = clamp01(0.5 - (dx / 384.0 * 0.42 + dy / 384.0 * 0.58))
+        grain = tex.at(xx / w, yy / h)
+        lamn = clamp01(lam * (0.92 + 0.12 * grain))
+
+        def cc(v):
+            return C(v) if isinstance(v, str) else np.asarray(v, np.float32)
+
+        def plate(mask, lo, hi, spec=0.5, spec_col="A6C2D6"):
+            b.over(mask, C("060A10"))
+            b.over_grad(mask, cc(lo), cc(hi), clamp01(1.0 - lamn))
+            b.add(mask * clamp01((lamn - 0.58) * 2.6) * spec, cc(spec_col), 0.9)
+
+        # ---- violet spiral arms, painted behind the gantry
+        for pts in arms:
+            n = len(pts) - 1
+            for i in range(n):
+                t = i / float(n)
+                ax, ay = pts[i]
+                bx, by = pts[i + 1]
+                wdt = 7.0 * (1.0 - 0.60 * t)
+                d = sd_seg(xx, yy, ax, ay, bx, by, 0.0)
+                m = np.exp(-(d / wdt) ** 2.0)
+                col = mix(C("6C3ED0"), C("8FF0FF"), clamp01(t ** 1.5))
+                b.add(m * (0.26 + 0.52 * t), col, 0.85)
+                b.add(np.exp(-(d / (wdt * 0.28)) ** 2.0) * (0.26 + 0.46 * t),
+                      C("E6DCFF"), 0.8)
+                b.add(np.exp(-(d / (wdt * 2.6)) ** 2.0) * 0.14, PURPLE, 0.6)
+
+        # ---- six radial struts, also behind the rings
+        u6, v6, _, _, _ = _arm_frame(xx, yy, cx, cy, 6, math.radians(30))
+        strut = [(172.0, 16.0), (304.0, 11.0), (304.0, -11.0), (172.0, -16.0)]
+        sd6 = sd_poly(u6, v6, strut)
+        sm = aa(sd6)
+        b.over(aa(sd6 + 2.2), C("05080D"))
+        plate(sm, "1A2632", "46607A", 0.45)
+        b.over(np.exp(-((sd6 + 0.9) / 0.8) ** 2.0), C("7E9CB2"), 0.45)
+        b.over(np.exp(-(v6 / 8.0) ** 2.0) * sm, C("0A121B"), 0.5)
+        b.add(np.exp(-(v6 / 1.2) ** 2.0) * sm * 0.40, C("3FA8C8"), 0.5)
+        for ru in (206.0, 238.0, 270.0):
+            b.over(np.exp(-((u6 - ru) / 1.2) ** 2.0) * sm * 0.75, C("16222E"), 0.5)
+
+        # ================= three concentric gantry rings =================
+        # outer ring
+        ring_o = aa(sd_ring(xx, yy, cx, cy, 310.0, 13.0))
+        plate(ring_o, "1E2A38", "4A6276", 0.5)
+        b.over(np.exp(-((r - 322.0) / 1.1) ** 2.0), C("8FB0C6"), 0.5)
+        b.over(np.exp(-((r - 298.0) / 1.1) ** 2.0), C("08111A"), 0.9)
+        seam8 = np.exp(-((np.abs(((ang / TAU * 8.0) % 1.0) - 0.5) - 0.5) / 0.009) ** 2.0)
+        b.over(seam8 * ring_o, C("05090F"), 0.75)
+        for k in range(8):
+            a0 = k * TAU / 8.0 + TAU / 16.0
+            lx = cx + math.cos(a0) * 310.0
+            ly = cy + math.sin(a0) * 310.0
+            nd = np.exp(-(((xx - lx) ** 2 + (yy - ly) ** 2) / 13.0))
+            b.add(clamp01(nd * 0.8), CYAN, 0.85)
+            b.over(clamp01(nd * 0.9), C("DCFAFF"), 0.55)
+        # mid ring, with violet energy between the plates
+        ring_m = aa(sd_ring(xx, yy, cx, cy, 240.0, 12.0))
+        plate(ring_m, "202C3A", "526A80", 0.45)
+        b.over(np.exp(-((r - 252.0) / 1.0) ** 2.0), C("8FAEC2"), 0.45)
+        b.over(np.exp(-((r - 228.0) / 1.0) ** 2.0), C("08111A"), 0.85)
+        seam6 = np.exp(-((np.abs(((ang / TAU * 6.0) % 1.0) - 0.5) - 0.5) / 0.011) ** 2.0)
+        b.over(seam6 * ring_m, C("05090F"), 0.7)
+        # dashed cyan energy ring between the outer and mid gantries
+        cy_ring = np.exp(-((r - 284.0) / 1.6) ** 2.0) * seg_mask(
+            ang, 16, duty=0.48, phase=0.0, edge=0.03)
+        b.add(cy_ring * 0.55, CYAN, 0.75)
+        b.add(cy_ring * 0.22, C("DFFBFF"), 0.6)
+        pv = np.exp(-((r - 240.0) / 3.4) ** 2.0) * (
+            1.0 - seg_mask(ang, 6, duty=0.55, phase=0.0, edge=0.03))
+        b.add(pv * 0.75, PURPLE, 0.9)
+        b.add(pv * 0.28, C("E0D4FF"), 0.65)
+        # inner ring, bright ice-cyan
+        ring_i = aa(sd_ring(xx, yy, cx, cy, 166.0, 5.0))
+        plate(ring_i, "34465A", "86A3B9", 0.5)
+        b.add(np.exp(-((r - 166.0) / 1.9) ** 2.0) * 0.45, CYAN, 0.7)
+        b.over(np.exp(-((r - 170.5) / 1.0) ** 2.0), C("CFF8FF"), 0.5)
+        for k in range(12):
+            a0 = k * TAU / 12.0
+            lx = cx + math.cos(a0) * 166.0
+            ly = cy + math.sin(a0) * 166.0
+            nd = np.exp(-(((xx - lx) ** 2 + (yy - ly) ** 2) / 6.0))
+            b.add(clamp01(nd * 0.7), CYAN, 0.75)
+
+        # ================= core: dark well + magenta light =================
+        b.over(aa(sd_circle(xx, yy, cx, cy, 112.0)), C("05030C"))
+        b.over(aa(sd_circle(xx, yy, cx, cy, 104.0)), C("0A0518"))
+        b.over_grad(aa(sd_circle(xx, yy, cx, cy, 96.0)), C("140A24"), C("05030C"),
+                    clamp01(1.0 - lamn))
+        # event horizon
+        hor = np.exp(-((r - 91.0) / 2.4) ** 2.0)
+        b.add(hor * 1.0, MAGENTA, 0.95)
+        b.over(hor * 0.50, C("FFE0F0"), 0.8)
+        # accretion swirl
+        for k in range(2):
+            pts = _spiral_pts(cx, cy, k * math.pi + 0.4, 86.0, 18.0, 2.5, steps=11)
+            for i in range(len(pts) - 1):
+                d = sd_seg(xx, yy, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], 0.0)
+                b.add(np.exp(-(d / 2.2) ** 2.0) * 0.22, C("FF7AB0"), 0.65)
+        # hot centre
+        b.add(clamp01(np.exp(-(r / 16.0) ** 2.0) * 0.80), MAGENTA, 0.85)
+        b.over(clamp01(np.exp(-(r / 7.5) ** 2.0) * 0.95), C("FFF4FA"), 0.85)
+        # violet lensing haze around the well
+        b.add(np.exp(-(np.maximum(r - 96.0, 0.0) / 44.0) ** 2.0) * 0.16, PURPLE, 0.5)
+        # three spokes from the well to the inner ring
+        for k in range(3):
+            a0 = k * TAU / 3.0 + math.radians(90)
+            ca, sa = math.cos(a0), math.sin(a0)
+            d = sd_seg(xx, yy, cx + ca * 100.0, cy + sa * 100.0,
+                       cx + ca * 162.0, cy + sa * 162.0, 0.0)
+            b.over(np.exp(-(d / 3.2) ** 2.0) * 0.30, C("C8B4FF"), 0.6)
+            b.add(np.exp(-(d / 2.0) ** 2.0) * 0.45, PURPLE, 0.65)
+        return b.to_array()
+
+    def gmask_rim(xx, yy):
+        return aa(sd_ring(xx, yy, cx, cy, 310.0, 14.0))
+
+    def solid_rim(xx, yy):
+        return aa(sd_ring(xx, yy, cx, cy, 310.0, 13.0))
+
+    def gmask_core(xx, yy):
+        r = np.hypot(xx - cx, yy - cy)
+        return np.exp(-(np.maximum(r - 60.0, 0.0) / 48.0) ** 2.0)
+
+    def solid_core(xx, yy):
+        r = np.hypot(xx - cx, yy - cy)
+        return aa(r - 96.0)
+
+    img = make(w, h, fn, ss=ss, glows=[(gmask_rim, 6.0, CYAN, 0.6, solid_rim),
+                                       (gmask_rim, 18.0, C("1E6C8C"), 0.32, solid_rim),
+                                       (gmask_core, 12.0, MAGENTA, 0.60, solid_core)])
+    return save(finish(img, w, h), "singularity_rig.png", w, h)
+
+
+def build_ring_repel():
+    """Repulsion pulse: thin cyan ring + 8 outward spikes (additive, tintable)."""
+    w = h = 512
+    cx = cy = 256.0
+    R = 210.0   # engine maps this radius with RIG_REPEL_RADIUS / 210
+    spikes = []
+    for k in range(8):
+        a0 = k * TAU / 8.0 + TAU / 16.0
+        spikes.append((math.cos(a0), math.sin(a0)))
+
+    def fn(xx, yy):
+        b = Block(xx.shape)
+        r = np.hypot(xx - cx, yy - cy)
+        ang = np.arctan2(yy - cy, xx - cx)
+        fade = sstep(248.0, 232.0, r)
+        core = np.exp(-((r - R) / 1.9) ** 2.0) * fade
+        halo = np.exp(-((r - R) / 11.0) ** 2.0) * fade
+        b.over(clamp01(core * 0.95), C("E6FEFF"), 1.0)
+        b.over(clamp01(core * 0.55), WHITE, 0.9)
+        b.add(clamp01(halo * 0.40), CYAN, 0.6)
+        # dashed inner echo ring
+        dash = np.exp(-((r - (R - 30.0)) / 1.3) ** 2.0) * sstep(
+            -0.3, 0.25, np.sin(ang * 24.0)) * fade
+        b.over(dash * 0.45, C("BFF4FF"), 0.55)
+        # 8 outward spikes: bright ray + soft sheath + hot tip
+        for (ca, sa) in spikes:
+            p0 = (cx + ca * (R - 3.0), cy + sa * (R - 3.0))
+            p1 = (cx + ca * 232.0, cy + sa * 232.0)
+            d = sd_seg(xx, yy, p0[0], p0[1], p1[0], p1[1], 0.0)
+            along = sstep(R - 4.0, R + 6.0, r)
+            m = np.exp(-(d / 1.9) ** 2.0) * sstep(236.0, 216.0, r)
+            b.add(clamp01(m * 0.95), C("8FF0FF"), 0.85)
+            b.over(clamp01(m * 0.55), C("F0FFFF"), 0.65)
+            ray = np.exp(-(d / 0.85) ** 2.0) * sstep(238.0, 214.0, r) * along
+            b.add(clamp01(ray * 0.95), C("E6FEFF"), 0.85)
+            tip = np.exp(-(((xx - cx - ca * 231.0) ** 2 + (yy - cy - sa * 231.0) ** 2) / 6.0))
+            b.add(clamp01(tip * 0.85), C("BFF4FF"), 0.8)
+        return b.to_array()
+
+    img = make(w, h, fn, ss=4)
+    return save(finish(img, w, h), "ring_repel.png", w, h)
+
+
+def build_ring_siphon():
+    """Siphon: thin violet ring + inward-curling arms (additive, tintable)."""
+    w = h = 512
+    cx = cy = 256.0
+    R = 210.0   # engine maps this radius with RIG_SIPHON_RADIUS / 210
+    arms = []
+    for k in range(4):
+        base = k * TAU / 4.0 + math.radians(45)
+        arms.append(_spiral_pts(cx, cy, base, R - 6.0, 92.0, 1.30, steps=22))
+
+    def fn(xx, yy):
+        b = Block(xx.shape)
+        r = np.hypot(xx - cx, yy - cy)
+        ang = np.arctan2(yy - cy, xx - cx)
+        fade = sstep(249.0, 233.0, r)
+        core = np.exp(-((r - R) / 1.8) ** 2.0) * fade
+        halo = np.exp(-((r - R) / 10.5) ** 2.0) * fade
+        b.over(clamp01(core * 0.9), C("EDE4FF"), 1.0)
+        b.over(clamp01(core * 0.5), WHITE, 0.85)
+        b.add(clamp01(halo * 0.38), PURPLE, 0.6)
+        # inward spiral arms, thinning as they fall toward the centre
+        for pts in arms:
+            n = len(pts) - 1
+            for i in range(n):
+                t = i / float(n)
+                ax, ay = pts[i]
+                bx, by = pts[i + 1]
+                wdt = 4.8 * (1.0 - 0.52 * t)
+                d = sd_seg(xx, yy, ax, ay, bx, by, 0.0)
+                m = np.exp(-(d / wdt) ** 2.0) * (0.30 + 0.60 * (1.0 - t))
+                b.add(clamp01(m), C("D8CCFF"), 0.85)
+                b.add(clamp01(np.exp(-(d / (wdt * 0.35)) ** 2.0)
+                              * (0.25 + 0.45 * (1.0 - t))), C("F2ECFF"), 0.75)
+                b.add(clamp01(np.exp(-(d / (wdt * 2.2)) ** 2.0) * 0.16), C("A88CFF"), 0.55)
+        # small inward chevrons on the ring (four gaps)
+        for k in range(4):
+            a0 = k * TAU / 4.0 + math.radians(45)
+            ca, sa = math.cos(a0), math.sin(a0)
+            px, py = -sa, ca
+            tipx, tipy = cx + ca * (R - 24.0), cy + sa * (R - 24.0)
+            hd = np.minimum(
+                sd_seg(xx, yy, tipx, tipy, cx + ca * (R - 10.0) + px * 7.0,
+                       cy + sa * (R - 10.0) + py * 7.0, 0.9),
+                sd_seg(xx, yy, tipx, tipy, cx + ca * (R - 10.0) - px * 7.0,
+                       cy + sa * (R - 10.0) - py * 7.0, 0.9))
+            b.add(clamp01(np.exp(-(hd / 1.1) ** 2.0) * 0.85), C("CDBBFF"), 0.8)
+        # faint dashed echo just inside the ring
+        dash = np.exp(-((r - (R - 17.0)) / 1.2) ** 2.0) * sstep(
+            -0.35, 0.2, np.sin(ang * 28.0)) * fade
+        b.add(clamp01(dash * 0.35), PURPLE, 0.5)
+        return b.to_array()
+
+    img = make(w, h, fn, ss=4)
+    return save(finish(img, w, h), "ring_siphon.png", w, h)
+
+
+def build_pylon():
+    """Twin relay station: hex dish + three prisms, amber bands, cyan slits."""
+    w = h = 512
+    ss = 3
+    cx = cy = 256.0
+    Rd = 150.0
+    tex = noise_tex(w, h, 22.0, 2, seed=863, res=384)
+
+    def fn(xx, yy):
+        b = Block(xx.shape)
+        dx = xx - cx
+        dy = yy - cy
+        r = np.sqrt(dx * dx + dy * dy)
+        ang = np.arctan2(dy, dx)
+        lam = clamp01(0.5 - (dx / 256.0 * 0.42 + dy / 256.0 * 0.58))
+        grain = tex.at(xx / w, yy / h)
+        lamn = clamp01(lam * (0.92 + 0.12 * grain))
+
+        def cc(v):
+            return C(v) if isinstance(v, str) else np.asarray(v, np.float32)
+
+        def plate(mask, lo, hi, spec=0.5, spec_col="A6C2D6"):
+            b.over(mask, C("060A10"))
+            b.over_grad(mask, cc(lo), cc(hi), clamp01(1.0 - lamn))
+            b.add(mask * clamp01((lamn - 0.58) * 2.6) * spec, cc(spec_col), 0.9)
+
+        # ---- hex dish body
+        hexd = sd_hex(xx, yy, cx, cy, Rd, math.radians(30))
+        b.over(aa(hexd + 4.0), C("05080D"))
+        b.over_grad(aa(hexd), C("16222E"), C("0C141D"), clamp01(lamn))
+        b.over(np.exp(-((hexd + 1.2) / 1.4) ** 2.0), C("7E9CB2"), 0.55)
+        b.over(np.exp(-((hexd + 0.4) / 0.6) ** 2.0) * 0.6, C("B8D2E4"), 0.5)
+        hx2 = sd_hex(xx, yy, cx, cy, Rd * 0.76, math.radians(30))
+        plate(aa(hx2), "2A3A4A", "627E96", 0.5)
+        b.over(np.exp(-((hx2 + 0.9) / 1.0) ** 2.0), C("9CBCCF"), 0.45)
+        b.over(np.exp(-((hx2 - 1.2) / 1.1) ** 2.0) * 0.55, C("05090E"), 0.6)
+        # radial seams + amber rim strip
+        seam = np.exp(-((np.abs(((ang / TAU * 12.0) % 1.0) - 0.5) - 0.5) / 0.012) ** 2.0)
+        b.over(seam * aa(hexd - 6.0) * aa(hx2 + 5.0) * 0.55, C("05090F"), 0.5)
+        b.over(np.exp(-((hexd + 6.0) / 1.5) ** 2.0), C("8A5A18"), 0.7)
+        for k in range(6):
+            a0 = k * TAU / 6.0 + math.radians(60)
+            lx = cx + math.cos(a0) * (Rd * 0.88)
+            ly = cy + math.sin(a0) * (Rd * 0.88)
+            nd = np.exp(-(((xx - lx) ** 2 + (yy - ly) ** 2) / 22.0))
+            b.add(clamp01(nd * 0.85), AMBER, 0.8)
+
+        # ---- three antenna prisms (up, lower-left, lower-right)
+        u3, v3, r3, _, _ = _arm_frame(xx, yy, cx, cy, 3, math.radians(-90))
+        prism = [(116.0, 23.0), (198.0, 11.0), (208.0, 6.0), (208.0, -6.0),
+                 (198.0, -11.0), (116.0, -23.0)]
+        pd = sd_poly(u3, v3, prism)
+        pm = aa(pd)
+        plate(pm, "2A3A4A", "64809A", 0.55)
+        b.over(np.exp(-((pd + 0.9) / 1.0) ** 2.0), C("A2C0D2"), 0.5)
+        # dark channel down the middle + amber light strip
+        b.over(np.exp(-(v3 / 3.2) ** 2.0) * pm, C("070C13"), 0.7)
+        b.add(np.exp(-(v3 / 1.5) ** 2.0) * pm * 0.85, AMBER, 0.9)
+        b.add(np.exp(-(v3 / 0.6) ** 2.0) * pm * 0.45, C("FFE8BE"), 0.7)
+        # prism ribs
+        for ru in (136.0, 160.0, 184.0):
+            b.over(np.exp(-((u3 - ru) / 1.1) ** 2.0) * pm, C("0A121B"), 0.55)
+        # tip cap + cyan slit at the base
+        tip = aa(sd_circle(u3, v3, 204.0, 0.0, 7.0)) * pm
+        b.over(tip, C("16222E"))
+        b.add(np.exp(-(np.hypot(u3 - 206.0, v3) / 4.5) ** 2.0) * pm * 0.9, CYAN, 0.9)
+        base = aa(sd_box(u3, v3, 120.0, 0.0, 5.0, 15.0, 2.0)) * pm
+        b.add(base * 0.85, CYAN, 0.9)
+        b.over(base * 0.6, C("DFFBFF"), 0.7)
+
+        # ---- twin relay pods (+X / -X) and their cyan link
+        for sgn in (-1.0, 1.0):
+            px = cx + sgn * 92.0
+            pod = sd_hex(xx, yy, px, cy, 36.0, math.radians(30))
+            b.over(aa(pod + 3.0), C("05080D"))
+            plate(aa(pod), "2C3C4E", "6A869E", 0.5)
+            b.over(np.exp(-((pod + 0.7) / 0.8) ** 2.0), C("A8C6D8"), 0.5)
+            dome = aa(sd_circle(xx, yy, px, cy, 20.0))
+            b.over(dome, C("0B1219"))
+            b.add(np.exp(-(np.hypot(xx - px, yy - cy) / 13.0) ** 2.0) * 0.9,
+                  CYAN, 0.85)
+            b.over(np.exp(-(np.hypot(xx - px, yy - cy) / 6.5) ** 2.0) * 0.95,
+                   C("E8FEFF"), 0.8)
+            b.over(np.exp(-((np.hypot(xx - px, yy - cy) - 20.0) / 1.2) ** 2.0),
+                   AMBER, 0.75)
+        b.add(np.exp(-((np.abs(dy) - 0.0) / 1.4) ** 2.0)
+              * sstep(56.0, 72.0, np.abs(dx)) * sstep(86.0, 74.0, np.abs(dx)) * 0.55,
+              CYAN, 0.6)
+
+        # ---- central hub
+        hub = sd_hex(xx, yy, cx, cy, 52.0, math.radians(30))
+        b.over(aa(hub + 3.0), C("05080D"))
+        b.over(aa(hub), C("101A24"))
+        plate(aa(hub - 3.0), "2E3E50", "6E8AA2", 0.55)
+        b.over(np.exp(-((hub + 1.0) / 1.2) ** 2.0), AMBER, 0.85)
+        b.over(np.exp(-((hub + 1.0) / 0.5) ** 2.0), C("FFE9C4"), 0.55)
+        core = np.exp(-(r / 17.0) ** 2.0)
+        b.add(clamp01(core * 1.05), CYAN, 0.95)
+        b.over(clamp01(core * 1.1), C("F0FEFF"), 0.85)
+        b.add(clamp01(np.exp(-(r / 34.0) ** 2.0) * 0.35), CYAN, 0.5)
+        return b.to_array()
+
+    def solid(xx, yy):
+        return aa(sd_hex(xx, yy, cx, cy, Rd, math.radians(30)))
+
+    def gmask(xx, yy):
+        return aa(sd_hex(xx, yy, cx, cy, Rd + 2.0, math.radians(30)))
+
+    img = make(w, h, fn, ss=ss, glows=[(gmask, 6.0, AMBER, 0.5, solid),
+                                       (gmask, 20.0, C("8C5A16"), 0.35, solid)])
+    return save(finish(img, w, h), "pylon.png", w, h)
+
+
+def build_guard_orb():
+    """Interceptor guard orb: pale cyan sphere + thin ring, tintable."""
+    w = h = 96
+    cx = cy = 48.0
+    R = 29.0
+    L = norm3((-0.46, -0.56, 0.69))
+
+    def fn(xx, yy):
+        b = Block(xx.shape)
+        r = np.hypot(xx - cx, yy - cy)
+        fade = sstep(46.0, 39.0, r)
+        # ---- sphere with a cool rim
+        dx = (xx - cx) / R
+        dy = (yy - cy) / R
+        d2 = dx * dx + dy * dy
+        nz = np.sqrt(np.clip(1.0 - d2, 0.0, 1.0))
+        lam = clamp01(dx * L[0] + dy * L[1] + nz * L[2])
+        ball = aa(np.sqrt(d2) * R - R)
+        col = mix(C("1C5C74"), C("CDEFFA"), clamp01(lam * 1.18))
+        col = mix(col, C("FFFFFF"), clamp01((lam - 0.82) * 4.2))
+        b.rgb = b.rgb * (1.0 - ball)[..., None] + col * ball[..., None]
+        b.a = clamp01(ball + b.a * (1.0 - ball))
+        b.over(np.exp(-((np.sqrt(d2) * R - R + 0.9) / 1.3) ** 2.0) * ball,
+               C("BFF4FF"), 0.7)
+        spec = np.exp(-(((xx - cx + 8.0) / 4.6) ** 2 + ((yy - cy + 8.6) / 4.1) ** 2))
+        b.over(clamp01(spec) * ball, WHITE, 0.9)
+        # ---- thin equatorial ring
+        ring = np.exp(-((r - 37.0) / 1.05) ** 2.0) * fade
+        b.over(ring * 0.9, C("CFF8FF"), 0.95)
+        b.over(ring * 0.5, WHITE, 0.7)
+        b.add(ring * 0.85, CYAN, 0.8)
+        # ---- bright core (kept small so the orb still reads as a sphere)
+        b.add(clamp01(np.exp(-(r / 7.5) ** 2.0) * 0.55), WHITE, 0.9)
+        b.over(clamp01(np.exp(-(r / 4.4) ** 2.0) * 0.55), C("FFFFFF"), 0.8)
+        b.add(clamp01(np.exp(-(r / 19.0) ** 2.0) * 0.22), CYAN, 0.45)
+        return b.to_array()
+
+    img = make(w, h, fn, ss=4)
+    return save(finish(img, w, h), "guard_orb.png", w, h)
+
+
+def build_missile_booster():
+    """Second-stage heavy torpedo: thicker hull, twin bells, white guide ring."""
+    w, h = 64, 28
+    cy = 14.0
+    body_dark = C("501505")
+    body = C("FF6A2E")
+    hot = C("FFD08A")
+    white = C("EAF7FF")
+    verts = [(11.0, 6.2), (15.0, 4.6), (40.0, 4.6), (46.0, 6.8),
+             (61.0, 14.0), (46.0, 21.2), (40.0, 23.4), (15.0, 23.4), (11.0, 21.8)]
+    fin_t = [(14.0, 5.2), (26.0, 1.6), (27.0, 5.6)]
+    fin_b = [(14.0, 22.8), (26.0, 26.4), (27.0, 22.4)]
+
+    def fn(xx, yy):
+        b = Block(xx.shape)
+        d = sd_poly(xx, yy, verts)
+        body_m = aa(d)
+        t = clamp01((yy - 4.0) / 20.0)
+        b.over_grad(body_m, body, body_dark, t)
+        # fatter blast shield / fins
+        b.over(aa(sd_poly(xx, yy, fin_t)), C("E8481F"), 0.95)
+        b.over(aa(sd_poly(xx, yy, fin_b)), C("B03012"), 0.95)
+        # nose warming to amber
+        nt = clamp01((xx - 44.0) / 17.0)
+        nose = body_m * aa(sd_seg(xx, yy, 46.0, cy, 61.0, cy, 6.4))
+        b.over(nose, hot, 0.55 * nt)
+        # top highlight + belly shadow + panel seams (heavier than missile.png)
+        b.over(aa(sd_seg(xx, yy, 15.0, 7.4, 44.0, 7.4, 1.1)), C("FFE0B8"), 0.8)
+        b.over(aa(sd_seg(xx, yy, 14.0, 21.4, 44.0, 21.4, 1.3)), C("2A0A02"), 0.55)
+        b.over(aa(sd_seg(xx, yy, 34.0, 5.2, 34.0, 22.8, 0.55)), C("5A1A06"), 0.5)
+        b.over(aa(sd_seg(xx, yy, 26.0, 5.2, 26.0, 22.8, 0.55)), C("5A1A06"), 0.35)
+        # white guide ring amidships
+        gd = np.abs(np.hypot((xx - 32.0) / 1.0, (yy - cy) / 1.36) - 4.6) - 0.24
+        gm = aa(gd) * body_m
+        b.over(gm * 0.80, white, 0.8)
+        b.add(gm * 0.30, C("BFF4FF"), 0.5)
+        # machined seam bands across the hull
+        for bx in (21.0, 43.0):
+            b.over(aa(np.abs(xx - bx) - 0.30) * body_m * 0.35, C("5A1A06"), 0.6)
+        # twin nozzles
+        for ny in (9.6, 18.4):
+            nd = sd_box(xx, yy, 12.4, ny, 2.2, 2.6, 0.9)
+            b.over(aa(nd), C("1E0700"), 0.9)
+            b.over(np.exp(-((nd + 0.8) / 1.1) ** 2.0), C("8A2A0C"), 0.6)
+            fl = np.exp(-(((xx - 7.4) / 2.6) ** 2 + ((yy - ny) / 2.1) ** 2))
+            b.add(clamp01(fl * 1.5), hot, 1.0)
+            b.over(clamp01(fl * 1.2), C("FFF0C8"), 0.55)
+        b.add(clamp01(body_m * 0.26), body, 0.55)
+        return b.to_array()
+
+    img = make(w, h, fn, ss=4)
+    return save(finish(img, w, h), "missile_booster.png", w, h)
+
+
+def build_mine():
+    """Slow drifting mine: dark sphere, six magenta spikes, hot core."""
+    w = h = 56
+    cx = cy = 28.0
+    R = 14.0
+    L = norm3((-0.44, -0.56, 0.70))
+
+    def fn(xx, yy):
+        b = Block(xx.shape)
+        dx = xx - cx
+        dy = yy - cy
+        r = np.hypot(dx, dy)
+        fade = sstep(26.0, 22.0, r)
+        # ---- six spikes
+        for k in range(6):
+            a0 = k * TAU / 6.0 + math.radians(15)
+            ca, sa = math.cos(a0), math.sin(a0)
+            d = sd_seg(xx, yy, cx + ca * (R - 1.0), cy + sa * (R - 1.0),
+                       cx + ca * 22.6, cy + sa * 22.6, 0.0)
+            taper = sstep(22.8, 15.0, r)
+            m = np.exp(-(d / 1.25) ** 2.0) * taper * fade
+            b.over(clamp01(m * 0.85), C("6E1236"), 0.9)
+            b.add(clamp01(m * 0.75), MAGENTA, 0.8)
+            tp = np.exp(-(((xx - cx - ca * 22.4) ** 2 + (yy - cy - sa * 22.4) ** 2) / 5.0))
+            b.add(clamp01(tp * 0.9) * fade, C("FF9AC0"), 0.8)
+        # ---- hull
+        dxn = dx / R
+        dyn = dy / R
+        d2 = dxn * dxn + dyn * dyn
+        nz = np.sqrt(np.clip(1.0 - d2, 0.0, 1.0))
+        lam = clamp01(dxn * L[0] + dyn * L[1] + nz * L[2])
+        ball = aa(np.sqrt(d2) * R - R)
+        col = mix(C("0A0E16"), C("3C4A5C"), clamp01(lam * 1.15))
+        col = mix(col, C("6E8094"), clamp01((lam - 0.74) * 3.4))
+        b.rgb = b.rgb * (1.0 - ball)[..., None] + col * ball[..., None]
+        b.a = clamp01(ball + b.a * (1.0 - ball))
+        b.over(np.exp(-((np.sqrt(d2) * R - R + 0.8) / 1.2) ** 2.0) * ball,
+               C("7E94A8"), 0.55)
+        # armour plates
+        for k in range(3):
+            a0 = k * TAU / 3.0 + math.radians(30)
+            ca, sa = math.cos(a0), math.sin(a0)
+            b.over(np.exp(-(sd_seg(xx, yy, cx + ca * 3.0, cy + sa * 3.0,
+                                   cx + ca * R, cy + sa * R, 0.0) / 0.8) ** 2.0) * ball,
+                   C("05080D"), 0.5)
+        # ---- hot magenta core + pulse ring
+        b.add(clamp01(np.exp(-(r / 6.4) ** 2.0) * 1.1), MAGENTA, 0.95)
+        b.over(clamp01(np.exp(-(r / 3.4) ** 2.0) * 1.05), C("FFD6E8"), 0.9)
+        b.over(np.exp(-((r - 7.6) / 0.75) ** 2.0) * 0.85, C("FF7AB0"), 0.8)
+        spec = np.exp(-(((xx - cx + 4.0) / 2.6) ** 2 + ((yy - cy + 4.2) / 2.4) ** 2))
+        b.over(clamp01(spec) * ball * 0.32, C("DCE8F4"), 0.5)
+        return b.to_array()
+
+    img = make(w, h, fn, ss=4)
+    return save(finish(img, w, h), "mine.png", w, h)
+
+
+# ==========================================================================
 # explosions (8 frames)
 # ==========================================================================
 EXP_TEX = [noise_tex(256, 256, 5.0, 4, seed=610, res=256, norm=True),
@@ -2490,6 +3284,11 @@ EXPECTED = {
     "nebula_1.png": (1024, 1024), "nebula_2.png": (1024, 1024), "nebula_3.png": (1024, 1024),
     "dust.png": (256, 256), "shockwave.png": (512, 512), "spark.png": (32, 32),
     "smoke.png": (128, 128), "warp_ring.png": (1024, 1024), "title_bg.png": (1920, 1080),
+    # fleet additions
+    "carrier.png": (1024, 1024), "shield_arc.png": (768, 768),
+    "singularity_rig.png": (768, 768), "ring_repel.png": (512, 512),
+    "ring_siphon.png": (512, 512), "pylon.png": (512, 512),
+    "guard_orb.png": (96, 96), "missile_booster.png": (64, 28), "mine.png": (56, 56),
 }
 for _i in range(8):
     EXPECTED["explosion_%d.png" % _i] = (256, 256)
@@ -2506,6 +3305,9 @@ GROUPS = [
     ("celestial bodies", ["planet_1.png", "planet_2.png", "planet_3.png", "star.png"]),
     ("stations & zones", ["turret.png", "turret_ember.png", "safezone.png",
                           "safezone_fill.png", "shop_station.png", "warp_ring.png"]),
+    ("fleet additions", ["carrier.png", "shield_arc.png", "singularity_rig.png",
+                         "pylon.png", "guard_orb.png", "missile_booster.png",
+                         "mine.png", "ring_repel.png", "ring_siphon.png"]),
     ("hud / markers", ["reticle.png", "gravity_ring.png", "marker_zone.png",
                        "marker_shop.png", "marker_enemy.png", "arrow.png"]),
     ("fx", ["explosion_%d.png" % i for i in range(8)] + ["shockwave.png", "spark.png",

@@ -26,8 +26,8 @@ grep -rn "_draw\|draw_\(line\|circle\|arc\|polygon\|polyline\|string\|colored_po
 
 ```
 assets/
-├── world/   47 张世界贴图
-├── ui/      58 张 UI 贴图
+├── world/   56 张世界贴图
+├── ui/      65 张 UI 贴图
 ├── audio/   23 个 WAV（2 BGM + 21 SFX）
 └── fonts/ui.ttc   文泉驿正黑（16.8 MB）
 ```
@@ -44,11 +44,20 @@ assets/
 | `ship_glow.png` | 160×160 | 叠加，护盾泡 1.0~1.05×；白色可染色 |
 | `engine_glow.png` | 96×96 | 1:1，挂在机尾旋转 180°，按推力缩放；**朝 +X** |
 | `missile.png` | 64×28 | 1:1，**弹头朝 +X**；碰撞半径 12（贴图半宽 14） |
+| `missile_booster.png` | 64×28 | 1:1，**弹头朝 +X**；二段加速重型鱼雷（kind=`booster`），比 `missile.png` 粗一档，碰撞半径同样 12 |
+| `mine.png` | 56×56 | 1:1，慢速水雷（kind=`mine`），无锁定、可被脉冲反推 |
 | `missile_warn.png` | 96×96 | 1:1 叠加，锁定警告环（0.7×） |
 | `turret.png` | 1024×1024 | `scale = 420/400`（外缘约 420px），会缓慢自转 |
 | `turret_ember.png` | 768×768 | 过载时叠加红色能量纹，`scale = 420/384` |
 | `nest.png` | 256×256 | `scale = R/124`（可见外缘 ≈ R）；会缓慢自转/浮动 |
 | `drone.png` | 64×64 | 1:1，**机头朝 +X**；小型自杀无人机，碰撞半径 18，紫色机身 + 品红宽三角翼/传感器 |
+| `carrier.png` | 1024×1024 | 偏导母舰（kind=`aegis`），`scale = radius/360`（R=360）；**舰首朝 +X**，`Enemy.facing` 让它转向玩家，正面 ±60° 吃 20% 伤害、舰尾 ±60° 吃 1.5 倍暴击 |
+| `shield_arc.png` | 768×768 | 母舰正面能量盾，`scale = (radius+24)/330`：**画布中心为圆心**、半径 330、带宽 34 的 **+X ±60° 弧带**；引擎按 `facing` 旋转、additive + `modulate` 上色（默认青白 0.55 透明度），改版时不要改成整圆 |
+| `singularity_rig.png` | 768×768 | 引力阱舰（kind=`singularity`），`scale = radius/320`（R=320）；三层同心环 + 旋涡臂 + 品红暗核 |
+| `ring_repel.png` | 512×512 | 斥力态光环，`scale = RIG_REPEL_RADIUS/210`（默认 560/210≈2.67）；**环半径必须保持 210**，白/浅青 + additive + `modulate`，引擎让它缓慢自转与呼吸缩放 |
+| `ring_siphon.png` | 512×512 | 虹吸态光环，`scale = RIG_SIPHON_RADIUS/210`（默认 820/210≈3.90）；同样按 210 半径绘制，反向旋转 |
+| `pylon.png` | 512×512 | 双子中继站（kind=`twin`），`scale = radius/210`（R=210，成对生成）；六边形碟 + 三根天线棱柱 + 琥珀灯带 |
+| `guard_orb.png` | 96×96 | 精英词缀 `point_defense` 的护卫球，`scale = POINT_DEFENSE_RADIUS/28`；**可见球半径按 28 画**，白青可染色 |
 | `meteor_1..3.png` | 96×96 | `scale = 0.42`（显示约 40px），碰撞半径 17；随机旋转 |
 | `matter_small.png` | 32×32 | 0.7×（约 22px） |
 | `matter_big.png` | 64×64 | 0.62×（约 40px） |
@@ -105,6 +114,10 @@ icon_item_repair.png, icon_item_revive.png, icon_inventory.png, icon_skill.png,
 black.png, white.png, icon_192.png, icon_adaptive_fg_432.png, icon_adaptive_bg_432.png
 ```
 
+1.3.0 追加的图标：`icon_item_mine`（引力水雷）、`icon_service`（现场满额维修）、
+`icon_mod_gravity` / `icon_mod_deceive` / `icon_mod_billiard` / `icon_mod_trap`（四大流派改装芯片）、
+`icon_awaken`（技能觉醒）。它们与既有 `icon_*` 一样是 128×128、透明底、统一线宽与光晕；改装卡/觉醒卡按稀有度（史诗紫、传说琥珀）着色描边，图标本身不要再加深色底板。
+
 替换图标时保持视觉重量一致、透明背景；九宫格尺寸可不同，但边框像素需与 `Assets.stylebox()` 中 24px 对应。
 
 ---
@@ -123,6 +136,9 @@ black.png, white.png, icon_192.png, icon_adaptive_fg_432.png, icon_adaptive_bg_4
 ## 6. 重新生成 / 重新导入
 
 ```bash
+# 只重新生成某几张世界贴图（参数是 build_xxx() 去掉 build_ 前缀的名字）
+python3 tools/gen_assets_world.py carrier shield_arc ring_repel ring_siphon
+
 # 程序化生成世界 / UI / 音频（会覆盖同名文件）
 python3 tools/gen_assets_world.py
 python3 tools/gen_assets_ui.py
