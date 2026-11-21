@@ -86,7 +86,7 @@ xvfb-run -a -s "-screen 0 1280x720x24" \
 - 1.3.0 导出后在 Xvfb + llvmpipe 下真实运行，退出码 0；**13 张桌面截图**全部由导出包渲染产生（含新增的 `13_aegis` 偏导母舰正面护盾与 `14_twin` 双子中继站 + 超载水雷），已复制到 `docs/shots/`。
 - 导出包内自测：`./build/linux/EscapeGravity.x86_64 --headless -- --selftest` → `RESULT: 248 checks, 0 failed`。
 - 标题、中文字体、贴图、音频、脚本均从内嵌 PCK 加载；无缺失贴图警告。
-- `build/linux/EscapeGravity.x86_64` = 97,734,440 bytes，ELF x86-64（1.3.0 导出）。
+- `build/linux/EscapeGravity.x86_64` = 97,738,280 bytes，ELF x86-64（1.3.0 导出）。
 - 触屏 20:9 截图另用 `--resolution 2400x1080 -- --touch --shots=...` 生成，取 `04_battle` 作为 `docs/shots/12_touch.png`；触屏按钮仍按“加力 → 技能 → 物品栏”纵向排列，HUD 的改装芯片行在左上角条组下方，不与摇杆/按钮重叠。
 
 ### 2.2 Windows（1.3.0 本地导出验证）
@@ -97,7 +97,7 @@ file build/windows/EscapeGravity.exe
 python3 -c "d=open(...).read(); print(b'GDPC' in d[-4096:])"   # True
 ```
 
-- 1.3.0 本地导出：133,418,488 bytes，PE32+ x86-64，尾部 `GDPC` 校验通过；单文件、内嵌 PCK，无外部依赖；文件/产品版本元数据同步升到 `1.3.0.0`。
+- 1.3.0 本地导出：133,422,328 bytes，PE32+ x86-64，尾部 `GDPC` 校验通过；单文件、内嵌 PCK，无外部依赖；文件/产品版本元数据同步升到 `1.3.0.0`。
 - 未做商业代码签名（没有证书），首次运行会有 SmartScreen 提示。
 
 ### 2.3 Android（1.3.0 本地重建并签名）
@@ -119,7 +119,7 @@ Verified using v3 scheme (APK Signature Scheme v3): true
 Number of signers: 1
 ```
 
-- APK：50,955,108 bytes；含全部 `assets/`（贴图、字体、WAV、脚本 `.gdc`、场景）。
+- APK：50,959,204 bytes；含全部 `assets/`（贴图、字体、WAV、脚本 `.gdc`、场景）。
 - 权限：无危险权限（只有 Godot/模板默认项）。
 - 未在真机运行（本机无 Android 设备）；静态检查 + 签名验证通过，Linux 导出包已验证同一套 PCK 的运行时行为。
 - CI 仍会额外导出 `EscapeGravity-debug.apk`（临时调试密钥签名）并上传为 `EscapeGravity-android-debug` 工件，它只是测试包，不是这里用项目密钥签名的发行 APK。
@@ -130,9 +130,9 @@ Number of signers: 1
 
 | 文件 | 大小 |
 |---|---|
-| `EscapeGravity-1.3.0-windows-x86_64.zip` | 61,540,895 bytes |
-| `EscapeGravity-1.3.0-linux-x86_64.tar.gz` | 51,866,239 bytes |
-| `EscapeGravity-1.3.0-android-arm64.apk` | 50,955,108 bytes |
+| `EscapeGravity-1.3.0-windows-x86_64.zip` | 61,544,673 bytes |
+| `EscapeGravity-1.3.0-linux-x86_64.tar.gz` | 51,870,215 bytes |
+| `EscapeGravity-1.3.0-android-arm64.apk` | 50,959,204 bytes |
 | `SHA256SUMS.txt` | 覆盖以上文件与 `ANDROID-安装说明.txt` |
 
 > **1.3.0 未上传到 OpenList**。上一次 NAS 分发仍是 1.0.9：
