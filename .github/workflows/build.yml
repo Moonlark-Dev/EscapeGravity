@@ -99,7 +99,10 @@ jobs:
           grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" "$RUNNER_TEMP/apk-sign.txt"
           grep -q "Verified using v3 scheme (APK Signature Scheme v3): true" "$RUNNER_TEMP/apk-sign.txt"
           "${BUILD_TOOLS}aapt2" dump badging "$APK" > "$RUNNER_TEMP/apk-badging.txt"
-          grep -q "package: name='com.escapegravity.game' versionCode='14' versionName='1.2.0'" "$RUNNER_TEMP/apk-badging.txt"
+          # 版本号从工程文件读取，避免每次发版都要改 CI。
+          APP_VERSION="$(sed -n 's/^config\/version="\(.*\)"$/\1/p' project.godot)"
+          APP_CODE="$(sed -n 's/^version\/code=\([0-9]*\)$/\1/p' export_presets.cfg)"
+          grep -q "package: name='com.escapegravity.game' versionCode='${APP_CODE}' versionName='${APP_VERSION}'" "$RUNNER_TEMP/apk-badging.txt"
           grep -q "native-code: 'arm64-v8a'" "$RUNNER_TEMP/apk-badging.txt"
           grep -q "uses-feature: name='android.hardware.screen.landscape'" "$RUNNER_TEMP/apk-badging.txt"
           if grep -q "^uses-permission" "$RUNNER_TEMP/apk-badging.txt"; then
