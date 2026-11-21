@@ -20,6 +20,7 @@
 - **刷新规则**：玩家视野内没有安全区或商店时才会刷新；每 **8 秒**成对刷新 **2 架**，锁定玩家的无人机总数上限 **6 架**；视野内出现修整区时暂停刷新并每秒重试。
 - **修整区克制**：安全区/商店的驱离圈会把无人机强行推离，贴到区域本体则当场解体；**脉冲技能**范围内的无人机直接原地解体。
 - 无人机改用**紫/品红**机身与宽三角翼，和橙红色导弹明显区分；雷达上显示为威胁点，战斗截图与自测同步更新。
+- **升级池两处修正**：安全区进站瞬间就把燃料补满，所以满油时“补充燃料（恢复 25%）”成了一张零收益废卡——现在满油直接不给（权重 0，不会进卡池），只有在安全区里又烧掉燃料后才重新出现；物品栏扩建卡的判定也改回“栏位还能不能再扩”（原先误写成 `inventory.size() < item_slots`，导致 2 格背包一装满、玩家最需要扩格时反而永远刷不出），并且背包满时权重更高（10 对 6）。
 
 ### 1.1.0 更新
 
@@ -109,7 +110,7 @@ escape-gravity-release/
 │   ├── meteor.gd / matter.gd / zone.gd / decoy.gd / anchor.gd / fx.gd
 │   ├── assets.gd / audio.gd / store.gd / controls.gd
 │   ├── backdrop.gd           # 视差星云/星点
-│   └── selftest.gd           # 177 项无头断言 + 机器人可玩性验证
+│   └── selftest.gd           # 181 项无头断言 + 机器人可玩性验证
 ├── assets/                   # world / ui / audio / fonts
 ├── tools/                    # 素材生成、后期、构建、打包
 ├── docs/                     # ART.md / DESIGN_MAP.md / QA.md / 资产清单 / 截图
@@ -132,7 +133,7 @@ escape-gravity-release/
 
 ```bash
 godot --headless --path . -- --selftest
-# RESULT: 177 checks, 0 failed
+# RESULT: 181 checks, 0 failed
 ```
 
 ### 界面
