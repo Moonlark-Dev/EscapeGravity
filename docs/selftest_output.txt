@@ -2,13 +2,13 @@ Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
 
 === Escape Gravity selftest ===
 PASS  飞船极速 150   speed=150.0
-PASS  推进到极速只消耗加速所需燃料   fuel=98.4 want=98.4
+PASS  推进到极速只消耗加速所需燃料   fuel=268.4 want=268.4
 PASS  松开推进 2 秒仍保持 150（太空无阻力）   speed=150.0
-PASS  滑行不消耗燃料   fuel=98.4
+PASS  滑行不消耗燃料   fuel=268.4
 PASS  超过引擎极速的惯性被保留   speed=400.0
-PASS  极速后继续按住推进不耗燃料   fuel=100.0
+PASS  极速后继续按住推进不耗燃料   fuel=270.0
 PASS  加力极速 ≈192   speed=192.0
-PASS  加力燃料按实际加速计（≈4.8/s 满推力）   fuel=99.2 want=99.2
+PASS  加力燃料按实际加速计（≈4.8/s 满推力）   fuel=269.2 want=269.2
 PASS  初始加力槽 6.6s（旧 2.2s 的三倍）   cap=6.60
 PASS  加力结束后保持 192 惯性   speed=192.0
 PASS  加力推力 3×   plain=6.33 boost=19.00
@@ -28,7 +28,7 @@ PASS  环绕天体可获得超过引擎极速的速度   max=278.4
 PASS  环绕过程不会钻进天体表面   min_surface=181
 PASS  离开引力圈后仍高于基础极速   speed=187.8
 PASS  深空滑行 2 秒保持 300   speed=300.0
-PASS  滑行不耗燃料   fuel=100.0
+PASS  滑行不耗燃料   fuel=270.0
 PASS  导弹速度 150
 PASS  导弹转向率 0.525 rad/s   turn=0.525
 PASS  导弹碰撞半径 12
@@ -89,7 +89,7 @@ PASS  节能巡航把油耗降到 0.88
 PASS  油耗叠到 5 折后不再提供节能巡航
 PASS  2 格背包装满时仍能抽到物品栏扩建
 PASS  背包没满时也能抽到物品栏扩建
-PASS  脉冲消耗 10 燃料   fuel=90.0
+PASS  脉冲消耗 10 燃料   fuel=260.0
 PASS  脉冲使导弹脱锁
 PASS  脉冲冲量 200   v=200.0
 PASS  脉冲冷却 5s
@@ -146,7 +146,7 @@ PASS  未发现导弹的射入方向偏向敌人   95/120
 PASS  进入屏幕即被发现
 PASS  发现后贴图淡入   a=0.05
 PASS  远离出生点仍有天体区块   near=24 total=39
-PASS  初始燃料 100（燃料槽 500 → 100）   fuel=100
+PASS  初始燃料 270（燃料槽 500 → 270）   fuel=270
 PASS  地图生成阶段预置隐藏路线   n=12
 PASS  路线按滚动窗口继续预生成   n=24
 PASS  路线不会往回走   min_fwd=0.350
@@ -215,7 +215,7 @@ PASS  加速导弹凿穿拦截点防
 PASS  相位跃迁把敌人跳到玩家侧翼 900px   d=900
 PASS  超载殉爆一次抛射 6 枚水雷   mines=6
 PASS  精英词缀不再只堆血量（殉爆型血量更低）
-PASS  引力涡轮环绕行星每秒回 3 燃料   fuel=93.00
+PASS  引力涡轮环绕行星每秒回 3 燃料   fuel=263.00
 PASS  相对论弹头按 400 px/s 给 +32 伤害   bonus=32.0
 PASS  近炸增幅：130px 内脱锁伤害翻倍并回 1.5 护盾   dmg=50.0 shield=11.50
 PASS  惯性制导篡改把脱锁弹朝敌人微偏 12°   ang=12.00

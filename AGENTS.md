@@ -126,7 +126,7 @@ escape-gravity-release/
 - **升级池（1.3.0）**：`fuel_25` 已删除，换成 `eco_cruise`（油耗 ×0.88，叠到 0.5 为止，`ship.fuel_cost_mult` 同步）；燃料上限卡 +40/+80；`slot` 权重背包满 11 / 未满 6；满油时不再出燃料卡这条语义由“删除燃料卡”取代。**别再往池子里加回 `fuel_25`**。
 - **商店三货架（1.3.0）**：`_roll_shop` 固定 3 行——补给位 1~2 代币（护盾补片/备用能源/现场满额维修）、战术道具位 3~4（干扰弹/诱饵弹/紧急充能/引力水雷/加力灌注）、黑市 5~7（必出改装或觉醒）。offer 字典用 `kind`（item/service/mod/awaken）+ `title/desc/rarity/icon/shelf`，`ui._make_shop_row` 只读这些字段。背包满时购买**不再拒买**，直接进入 `State.DESTROY` 丢弃替换，替换后回到商店面板（`destroy_and_take` 里判断 `shop_inside`）。
 
-- **平衡**：初始燃料 **100**（1.4.0 由 500 收紧）；每级经验 **100**（1.4.0 由 20 ×5）；推进 4/s、加力 **4.8/s（1.2×）**（均按实际 Δv），3× 推力，引擎极速 150 / 加力 192，初始槽 **6.6s**；护盾 20。
+- **平衡**：初始燃料 **270**（1.4.0 由 500 收紧后定为 270）；每级经验 **100**（1.4.0 由 20 ×5）；推进 4/s、加力 **4.8/s（1.2×）**（均按实际 Δv），3× 推力，引擎极速 150 / 加力 192，初始槽 **6.6s**；护盾 20。
 - **状态机**：`PLAYING / LEVELUP / SHOP / DESTROY / DEAD / REPLACE_SKILL / AWAKEN_CHOICE`；暂停由 `main.gd` 控制，`run.paused` 冻结模拟。`REPLACE_SKILL` 是技能槽满时选新技能的双槽对比面板，`choose_skill_replace` / `cancel_skill_replace` 负责收尾；`AWAKEN_CHOICE` 是双分支技能（脉冲）的觉醒二选一，`choose_awaken` / `cancel_awaken_choice` 负责收尾，取消同样退还这次升级。
 - **存档**：`user://escape_gravity.cfg` 只保存设置与历史记录；没有中途存档 / 云存档 / meta 解锁。
 
