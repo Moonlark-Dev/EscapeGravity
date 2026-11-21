@@ -325,7 +325,7 @@ func _build_howto() -> void:
 	controls.size = Vector2(390, 190)
 	controls.add_theme_constant_override("line_spacing", 4)
 	p.add_child(controls)
-	var rules := _label("生存规则\n护盾 20，敌方导弹伤害 25：挨一发就结束。\n陨石只磨损 0.5，但被你撞飞的陨石能对攻击者造成 5 伤害。\n燃料 500；只有实际加速/减速/转向耗油，滑行免费。\n安全区：补满燃料、清除导弹、隐藏威胁信息。\n商店：用代币购买道具。\n贴近行星会自动绕行加速；导弹没有辅助装置，始终被引力弯折。", 14, EG.C_DIM)
+	var rules := _label("生存规则\n护盾 20，敌方导弹伤害 25：挨一发就结束。\n陨石只磨损 0.5，被你撞飞的陨石能对攻击者造成 5 伤害。\n燃料 500；只有实际加速/减速/转向耗油，滑行免费。\n安全区：补满燃料、清除导弹、隐藏威胁信息。\n商店三货架：补给 / 战术道具 / 黑市改装（必出改装或觉醒）。\n深层：偏导母舰绕后暴击、引力阱舰虹吸时送弹、双子一起打进过热。\n贴近行星会自动绕行加速；导弹没有辅助装置，始终被引力弯折。", 14, EG.C_DIM)
 	rules.position = Vector2(640, top + 205)
 	rules.size = Vector2(390, 190)
 	rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

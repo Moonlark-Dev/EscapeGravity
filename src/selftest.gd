@@ -31,6 +31,13 @@ func run_tests() -> void:
 	_test_body_clearance()
 	_test_shop_binding()
 	_test_rest_zone_refresh()
+	_test_new_enemies()
+	_test_enemy_ammo()
+	_test_elite_affixes()
+	_test_core_mods()
+	_test_awakenings()
+	_test_shop_shelves()
+	_test_content_smoke()
 	_test_initial_map()
 	var bot := await _test_bot_playability()
 	print("RESULT: %d checks, %d failed  (bot: %s)" % [total, failed, str(bot)])
@@ -79,6 +86,14 @@ func _clear_arena(r: Run) -> void:
 	for met in r.meteors.duplicate():
 		met.remove()
 	r.meteors.clear()
+	for dc in r.decoys.duplicate():
+		if is_instance_valid(dc):
+			dc.remove(false)
+	r.decoys.clear()
+	for an in r.anchors.duplicate():
+		if is_instance_valid(an):
+			an.remove()
+	r.anchors.clear()
 	for mat in r.matters.duplicate():
 		mat.queue_free()
 	r.matters.clear()
@@ -96,6 +111,18 @@ func _make_enemy(r: Run, pos: Vector2, kind: String = "turret") -> Enemy:
 	e.radius = EG.NEST_RADIUS if kind == "nest" else EG.TURRET_RADIUS
 	e.max_hp = EG.NEST_HP if kind == "nest" else EG.TURRET_HP
 	e.hp = e.max_hp
+	e.position = pos
+	r.world.add_child(e)
+	r.enemies.append(e)
+	r.current_enemy = e
+	return e
+
+func _make_attacker_at(r: Run, pos: Vector2, kind: String, d: int = 1, elite: bool = false,
+		affix: String = "") -> Enemy:
+	r.depth = d
+	var e: Enemy = r._make_attacker(kind, elite)
+	if affix != "":
+		e.affix = affix
 	e.position = pos
 	r.world.add_child(e)
 	r.enemies.append(e)
@@ -606,30 +633,38 @@ func _test_inventory_and_upgrades() -> void:
 		for c in cards:
 			if c["id"] == "slot":
 				slot_seen = true
-			if c["id"] == "skill_new":
+			if c["id"] == "skill_new" and bool(c.get("replace", false)):
 				new_skill_seen = true
 	_check("5 格上限后不再提供物品栏卡", not slot_seen)
-	_check("技能槽满后不再提供新技能", not new_skill_seen)
+	_check("技能槽满后仍能刷出新技能（带替换标记）", new_skill_seen)
 	_check("物品栏上限 5 / 技能槽 2", EG.ITEM_SLOTS_MAX == 5 and EG.SKILL_SLOTS == 2)
 	_kill(r)
 
-	# 安全区进站即把燃料补满，之后才开升级面板：满油时“恢复 25% 燃料”是零收益废卡。
+	# 燃料卡换成了“节能巡航”：进站必满油，回燃料是废卡；油耗折扣才和
+	# 500 基础池挂钩。
 	var rf := _new_run(128)
 	_clear_arena(rf)
-	rf.ship.fuel = rf.ship.fuel_max
+	var eco_seen := false
 	var fuel_card_seen := false
 	for i in range(120):
 		for c in Defs.roll_upgrades(rf, rf.rng):
+			if c["id"] == "eco_cruise":
+				eco_seen = true
 			if c["id"] == "fuel_25":
 				fuel_card_seen = true
-	_check("满油时不再提供燃料卡", not fuel_card_seen)
-	rf.ship.fuel = rf.ship.fuel_max * 0.5
-	var fuel_card_low := false
-	for i in range(40):
+	_check("节能巡航取代燃料卡进入升级池",
+		eco_seen and not fuel_card_seen and not Defs.UPGRADES.has("fuel_25"))
+	rf._apply_upgrade({"id": "eco_cruise"})
+	_check("节能巡航把油耗降到 0.88", absf(rf.eco_cruise - EG.ECO_CRUISE_MULT) < 0.001
+		and absf(rf.ship.fuel_cost_mult - EG.ECO_CRUISE_MULT) < 0.001)
+	rf.eco_cruise = EG.ECO_CRUISE_MIN
+	rf.ship.fuel_cost_mult = EG.ECO_CRUISE_MIN
+	var eco_capped := false
+	for i in range(80):
 		for c in Defs.roll_upgrades(rf, rf.rng):
-			if c["id"] == "fuel_25":
-				fuel_card_low = true
-	_check("燃料不足时仍会提供燃料卡", fuel_card_low)
+			if c["id"] == "eco_cruise":
+				eco_capped = true
+	_check("油耗叠到 5 折后不再提供节能巡航", not eco_capped)
 	_kill(rf)
 
 	# 扩建卡的条件曾经写反：`inventory.size() < item_slots` 让背包一装满就永远
@@ -1281,6 +1316,40 @@ func _test_rest_zone_refresh() -> void:
 		r.safe_zone != null and r.safe_zone != old_safe)
 	_kill(r)
 
+
+func _test_content_smoke() -> void:
+	var r := _new_run(175)
+	_clear_arena(r)
+	r.galaxy.bodies.clear()
+	r.ship.position = Vector2.ZERO
+	r.ship.fuel = r.ship.fuel_max
+	r.ship.shield = 999.0
+	r.ship.shield_max = 999.0
+	r.depth = 6
+	r.spawn_enemy()
+	_check("深度 6 刷新出带词缀的精英攻击者",
+		r.current_enemy != null and r.current_enemy.affix != "", 
+		"affix=%s" % (r.current_enemy.affix if r.current_enemy != null else "none"))
+	_clear_arena(r)
+	var seen := {}
+	var died := false
+	for d in range(1, 9):
+		_clear_arena(r)
+		r.depth = d
+		r.spawn_enemy()
+		seen[r.enemy_kind_for_depth(d)] = true
+		for e in r.enemies:
+			e.reveal(true)
+			e.position = r.ship.position + Vector2(0, -900) + Vector2(e.radius * 0.5, 0)
+		r.auto_input = Vector2(0, 1)
+		_step(r, 1.2)
+		if r.state == Run.State.DEAD:
+			died = true
+			break
+	_check("八层内容冒烟：五种敌人全部跑过实际模拟",
+		seen.size() == 5 and not died, str(seen.keys()))
+	_kill(r)
+
 func _test_initial_map() -> void:
 	var r := _new_run(116)
 	r.test_mode = false
@@ -1296,6 +1365,469 @@ func _test_initial_map() -> void:
 		init_d = r.current_enemy.position.distance_to(route.enemy_at(0))
 	_check("首个敌人落在路线预置点", init_d >= 0.0 and init_d < 2200.0, "d=%.0f" % init_d)
 	_check("地图生成时填充了物质", r.matters.size() > 50, "matter=%d" % r.matters.size())
+	_kill(r)
+
+
+# ---------------------------------------------------------------- new content
+
+func _test_new_enemies() -> void:
+	var r := _new_run(150)
+	_clear_arena(r)
+	var kinds: Array = []
+	for d in range(1, 6):
+		kinds.append(r.enemy_kind_for_depth(d))
+	_check("五种主敌人随深度轮换", kinds == ["turret", "nest", "aegis", "singularity", "twin"], str(kinds))
+	_check("深度 6 起每 4 层一个精英词缀",
+		r.is_elite_depth(6) and r.is_elite_depth(10) and not r.is_elite_depth(7) and not r.is_elite_depth(5))
+
+	r.depth = 2
+	var growth: Enemy = r._make_attacker("nest", false)
+	_check("深层血量膨胀降到 +14%/层",
+		absf(growth.max_hp - EG.NEST_HP * (1.0 + EG.DEPTH_HP_GROWTH)) < 0.01, "hp=%.2f" % growth.max_hp)
+	# _make_attacker 只造节点不入树，用完必须自己释放，否则退出时报泄漏。
+	growth.free()
+
+	# 偏导母舰：正面 120° 盾衰减 80% 且不过热，舰尾 1.5 倍暴击 + 4 秒长过热。
+	var a: Enemy = _make_attacker_at(r, Vector2.ZERO, "aegis", 3)
+	a.facing = 0.0
+	var front: Dictionary = a.apply_hit(25.0, Vector2(a.radius - 6.0, 0))
+	_check("母舰正面伤害衰减 80% 且不触发过热",
+		absf(float(front["damage"]) - 5.0) < 0.01 and not bool(front["overheated"]),
+		"dmg=%.1f heat=%s" % [float(front["damage"]), str(front["overheated"])])
+	var rear: Dictionary = a.apply_hit(25.0, Vector2(-a.radius + 6.0, 0))
+	_check("母舰舰尾吃 1.5 倍暴击（37.5）",
+		absf(float(rear["damage"]) - 37.5) < 0.01 and bool(rear["crit"]))
+	_check("母舰舰尾暴击进入 4 秒长过热",
+		a.overheated and absf(a.overheat_timer - EG.AEGIS_CRIT_OVERHEAT) < 0.01)
+	_check("母舰转向极慢 0.35 rad/s", absf(EG.AEGIS_TURN - 0.35) < 0.001)
+	_kill(r)
+
+	# 双子中继站：成对刷新、间距 750、倒地一座后另一座继续。
+	var r2 := _new_run(151)
+	_clear_arena(r2)
+	r2.galaxy.bodies.clear()
+	r2.depth = 5
+	r2.spawn_enemy()
+	var pair: Array = r2.enemies.duplicate()
+	_check("双子中继站成对刷新", pair.size() == 2 and pair[0].twin == pair[1] and pair[1].twin == pair[0])
+	_check("双子间距 750px", absf(pair[0].position.distance_to(pair[1].position) - EG.PYLON_GAP) < 3.0,
+		"gap=%.0f" % pair[0].position.distance_to(pair[1].position))
+	pair[0].reveal(true)
+	pair[1].reveal(true)
+	r2.damage_enemy(pair[0], 9.0, pair[0].position, false)
+	_check("中弹后 3 秒才开始回血", absf(pair[0].heal_delay - EG.PYLON_HEAL_DELAY) < 0.01)
+	pair[0].hp = pair[0].max_hp * 0.4
+	pair[0].heal_delay = 0.001
+	pair[1].overheated = false
+	var hp_before: float = pair[0].hp
+	pair[0]._update_twin_heal(0.05)
+	pair[0]._update_twin_heal(0.5)
+	_check("未过热的联动站让另一座缓慢回血", pair[0].hp > hp_before, "hp=%.1f -> %.1f" % [hp_before, pair[0].hp])
+	var depth_before: int = r2.depth
+	r2.damage_enemy(pair[0], 999.0, pair[0].position, false)
+	_check("击毁一座后遭遇战继续、深度不推进",
+		r2.enemies.size() == 1 and r2.current_enemy == pair[1] and r2.depth == depth_before)
+	r2.damage_enemy(pair[1], 999.0, pair[1].position, false)
+	_check("两座都倒下才推进深度", r2.enemies.is_empty() and r2.depth == depth_before + 1)
+	_kill(r2)
+
+	# 引力阱舰：斥力推偏低速弹，虹吸把导弹吸向舰体。
+	var r3 := _new_run(152)
+	_clear_arena(r3)
+	r3.galaxy.bodies.clear()
+	var rig: Enemy = _make_attacker_at(r3, Vector2.ZERO, "singularity", 4)
+	rig.reveal(true)
+	rig.max_locked = 0
+	_check("引力阱舰默认是斥力态", not rig.siphon)
+	var slow := r3.spawn_enemy_missile(rig, Vector2(rig.radius + 130.0, 0), PI)
+	slow.locked = false
+	slow.seen = true
+	slow.vel = Vector2(-150, 0)
+	var d0: float = slow.position.distance_to(rig.position)
+	rig._rig_fields(0.5)
+	_check("斥力环把低速直射弹推偏擦过", slow.position.distance_to(rig.position) > d0 + 1.0)
+	var fast_m := r3.spawn_enemy_missile(rig, Vector2(rig.radius + 130.0, 0), PI)
+	fast_m.locked = false
+	fast_m.vel = Vector2(-400, 0)
+	var fd0: float = fast_m.position.distance_to(rig.position)
+	rig._rig_fields(0.1)
+	_check("高速导弹不会被斥力环掰弯", absf(fast_m.position.distance_to(rig.position) - fd0) < 0.01)
+	rig.siphon = true
+	rig.state_timer = 5.0
+	var pulled := r3.spawn_enemy_missile(rig, Vector2(600, 0), 0.0)
+	pulled.locked = false
+	var pd0: float = pulled.position.distance_to(rig.position)
+	rig._rig_fields(0.5)
+	_check("虹吸态把浮空导弹吸向舰体", pulled.position.distance_to(rig.position) < pd0 - 1.0)
+	rig.siphon = true
+	rig.state_timer = 0.001
+	rig.burst_left = 0
+	rig._rig_fields(0.02)
+	_check("虹吸结束立刻蓄好一次齐射",
+		not rig.siphon and rig.burst_left == EG.RIG_SIPHON_BURST)
+	_kill(r3)
+
+func _test_enemy_ammo() -> void:
+	var r := _new_run(153)
+	_clear_arena(r)
+	r.galaxy.bodies.clear()
+	var e := _make_attacker_at(r, Vector2(0, -2400), "turret", 3)
+	e.reveal(true)
+	_check("深度 1~2 只有普通弹", r.roll_enemy_ammo("nest", 1) == "normal" and r.roll_enemy_ammo("turret", 2) == "normal")
+
+	var bm := r.spawn_enemy_missile(e, Vector2(0, -420), 0.0, "booster")
+	_check("二段加速弹出膛速度 110", absf(bm.speed - EG.BOOSTER_SLOW_SPEED) < 0.01)
+	bm.step(1.0)
+	_check("点火前保持低速高转向",
+		absf(bm.speed - EG.BOOSTER_SLOW_SPEED) < 0.01 and absf(bm.turn_rate() - EG.BOOSTER_SLOW_TURN) < 0.001)
+	bm.step(1.0)
+	_check("点火后 340 px/s、角速度暴跌至 0.12",
+		absf(bm.speed - EG.BOOSTER_FAST_SPEED) < 0.01 and absf(bm.turn_rate() - EG.BOOSTER_FAST_TURN) < 0.001)
+
+	for m in r.missiles.duplicate():
+		remove_missile_safe(r, m)
+	var cm := r.spawn_enemy_missile(e, Vector2(0, -300), 0.0, "cluster")
+	cm.seen = true
+	cm.lock_timer = EG.MISSILE_LOCK_TIME - 0.05
+	cm.step(0.1)
+	var frags: Array = []
+	for m in r.missiles:
+		if not m.dead and m.kind == "frag":
+			frags.append(m)
+	_check("子母分裂弹锁定结束分裂成 3 枚无锁弹头", frags.size() == EG.CLUSTER_FRAGS and cm.dead)
+	var all12 := true
+	for fm in frags:
+		if absf(float(fm.dmg) - EG.CLUSTER_FRAG_DMG) > 0.01 or fm.is_locked():
+			all12 = false
+	_check("分裂弹头对敌 12 伤且无锁", all12)
+	_kill(r)
+
+func remove_missile_safe(r: Run, m) -> void:
+	if is_instance_valid(m) and not m.dead:
+		r.remove_missile(m, false)
+
+func _test_elite_affixes() -> void:
+	var r := _new_run(155)
+	_clear_arena(r)
+	r.galaxy.bodies.clear()
+	var pd: Enemy = _make_attacker_at(r, Vector2.ZERO, "turret", 1, true, "point_defense")
+	pd.reveal(true)
+	var gp: Vector2 = pd.guard_position(0)
+	var slow_m := r.spawn_enemy_missile(pd, gp, 0.0)
+	slow_m.locked = false
+	slow_m.vel = Vector2(100, 0)
+	_check("拦截点防吃掉低速零星导弹", pd.try_intercept(slow_m) and float(pd._guard_cd[0]) > 0.0)
+	pd._guard_cd[0] = 0.0
+	var fast_m := r.spawn_enemy_missile(pd, gp, 0.0)
+	fast_m.locked = false
+	fast_m.vel = Vector2(400, 0)
+	_check("加速导弹凿穿拦截点防", not pd.try_intercept(fast_m))
+
+	var pb: Enemy = _make_attacker_at(r, Vector2(2000, 0), "turret", 1, true, "phase_blink")
+	pb.reveal(true)
+	r.ship.position = Vector2.ZERO
+	pb.overheated = true
+	pb.overheat_timer = 0.001
+	pb.step(0.05)
+	_check("相位跃迁把敌人跳到玩家侧翼 900px",
+		absf(pb.position.distance_to(r.ship.position) - EG.PHASE_BLINK_DIST) < 40.0,
+		"d=%.0f" % pb.position.distance_to(r.ship.position))
+
+	var pv: Enemy = _make_attacker_at(r, Vector2(-3000, 0), "nest", 1, true, "volatile")
+	pv.reveal(true)
+	var before_mines: int = r.missiles.size()
+	r.damage_enemy(pv, 1.0, pv.position, false)
+	var mines: int = 0
+	for m in r.missiles:
+		if not m.dead and m.kind == "mine":
+			mines += 1
+	_check("超载殉爆一次抛射 6 枚水雷", mines == EG.VOLATILE_MINES, "mines=%d" % mines)
+	_check("精英词缀不再只堆血量（殉爆型血量更低）", pv.max_hp < EG.AEGIS_HP + 40.0)
+	_kill(r)
+
+func _test_core_mods() -> void:
+	var r := _new_run(160)
+	_clear_arena(r)
+	r.galaxy.bodies.clear()
+	r.ship.position = Vector2.ZERO
+	r.add_mod("gravity_turbine")
+	r.ship.fuel = 100.0
+	r.orbit_assist = true
+	r._update_mods(1.0)
+	_check("引力涡轮环绕行星每秒回 3 燃料", absf(r.ship.fuel - 103.0) < 0.05, "fuel=%.2f" % r.ship.fuel)
+	r.orbit_assist = false
+
+	r.add_mod("relativist")
+	var mm = r.spawn_enemy_missile(null, Vector2(400, 0), 0.0)
+	mm.vel = Vector2(0, 400)
+	_check("相对论弹头按 400 px/s 给 +32 伤害", absf(r.relativist_bonus(mm) - 32.0) < 0.01,
+		"bonus=%.1f" % r.relativist_bonus(mm))
+
+	r.add_mod("proximity_charge")
+	r.ship.shield = 10.0
+	var pm = r.spawn_enemy_missile(null, r.ship.position + Vector2(60, 0), 0.0)
+	pm.locked = true
+	pm.unlock()
+	_check("近炸增幅：130px 内脱锁伤害翻倍并回 1.5 护盾",
+		absf(float(pm.dmg) - 50.0) < 0.01 and absf(r.ship.shield - 11.5) < 0.01,
+		"dmg=%.1f shield=%.2f" % [float(pm.dmg), r.ship.shield])
+
+	var e := _make_attacker_at(r, Vector2(0, 3000), "turret", 1)
+	e.reveal(true)
+	r.add_mod("inertia_hack")
+	var im = r.spawn_enemy_missile(null, Vector2(0, 0), 0.0)
+	im.locked = true
+	im.vel = Vector2(150, 0)
+	im.unlock()
+	_check("惯性制导篡改把脱锁弹朝敌人微偏 12°",
+		absf(rad_to_deg(im.vel.angle()) - 12.0) < 0.5, "ang=%.2f" % rad_to_deg(im.vel.angle()))
+
+	var r2 := _new_run(161)
+	_clear_arena(r2)
+	r2.galaxy.bodies.clear()
+	r2.add_mod("chain_detonation")
+	var e2 := _make_attacker_at(r2, Vector2(0, 0), "turret", 1)
+	e2.reveal(true)
+	var near = r2.spawn_enemy_missile(e2, Vector2(120, 0), 0.0)
+	var far = r2.spawn_enemy_missile(e2, Vector2(900, 0), 0.0)
+	_check("连锁殉爆只影响 450px 内导弹", near.is_locked() and far.is_locked())
+	r2.damage_enemy(e2, 10.0, e2.position, false)
+	_check("连锁殉爆让近处导弹脱锁并被吸向敌人",
+		not near.is_locked() and near.chain == e2 and far.is_locked())
+
+	# 星体台球：质量投射器 / 木马协议 / 引力碎星带
+	r2.add_mod("mass_driver")
+	r2.ship.position = Vector2.ZERO
+	r2.ship.fuel = r2.ship.fuel_max
+	r2.skills[0]["cd"] = 0.0
+	var met := Meteor.new()
+	met.run = r2
+	met.position = Vector2(120, 0)
+	r2.world.add_child(met)
+	r2.meteors.append(met)
+	r2.cast_skill(0)
+	_check("质量投射器用脉冲把陨石轰飞", met.knocked and met.vel.length() > 200.0,
+		"v=%.0f" % met.vel.length())
+	_check("被撞飞的陨石对敌 18 伤", absf(r2.meteor_knock_damage() - 18.0) < 0.01)
+
+	r2.add_mod("trojan")
+	r2.skills[0]["cd"] = 0.0
+	var de := _make_attacker_at(r2, Vector2(0, -600), "turret", 1)
+	de.reveal(true)
+	var drone := _make_drone(r2, Vector2(100, 0))
+	r2.cast_skill(0)
+	_check("木马协议把无人机反向骇入成 560 px/s 弹药",
+		drone.hacked and absf(drone.speed - EG.MOD_TROJAN_SPEED) < 0.01)
+
+	var r3 := _new_run(162)
+	_clear_arena(r3)
+	r3.galaxy.bodies.clear()
+	r3.ship.position = Vector2.ZERO
+	r3.add_mod("gravity_belt")
+	var met2 := Meteor.new()
+	met2.run = r3
+	met2.position = Vector2(30, 0)
+	r3.world.add_child(met2)
+	r3.meteors.append(met2)
+	var shield0: float = r3.ship.shield
+	r3.ship.vel = Vector2(120, 0)
+	var speed0: float = r3.ship.vel.length()
+	r3.hit_ship_by_meteor(met2)
+	_check("引力碎星带撞陨石不掉血也不减速",
+		absf(r3.ship.shield - shield0) < 0.001 and absf(r3.ship.vel.length() - speed0) < 0.001)
+
+	# 陷阱阵列：共振奇点 / 回收反应堆 / 战地整备
+	var r4 := _new_run(163)
+	_clear_arena(r4)
+	r4.galaxy.bodies.clear()
+	r4.ship.position = Vector2.ZERO
+	r4.add_mod("resonance")
+	var anc := GravityAnchor.new()
+	anc.run = r4
+	anc.position = Vector2.ZERO
+	anc.radius = EG.ANCHOR_RADIUS
+	anc.duration = 5.0
+	r4.world.add_child(anc)
+	r4.anchors.append(anc)
+	r4._drop_decoy(Vector2(20, 0), Vector2.ZERO, 5.0)
+	var rm = r4.spawn_enemy_missile(null, Vector2(80, 0), 0.0)
+	rm.locked = false
+	rm.life = 3.0
+	r4._resonance_tick()
+	_check("共振奇点让区内导弹提速 60% 并刷新寿命",
+		absf(rm.speed - EG.MISSILE_SPEED * EG.MOD_RESONANCE_SPEED) < 0.5 and absf(rm.life) < 0.01,
+		"speed=%.1f" % rm.speed)
+
+	r4.add_mod("recycle_reactor")
+	r4.skills[0]["cd"] = 3.0
+	r4.ship.fuel = 100.0
+	r4.recycle_reward()
+	_check("回收反应堆：技能 -0.8s、+3 燃料",
+		absf(float(r4.skills[0]["cd"]) - 2.2) < 0.01 and absf(r4.ship.fuel - 103.0) < 0.01)
+
+	r4.add_mod("battlefield_ready")
+	r4.inventory = ["charge"]
+	r4.item_slots = 2
+	r4.use_item_slot(0)
+	_check("战地整备在用道具后给出 3 秒免费加力", r4.free_boost_timer > 2.9,
+		"t=%.2f" % r4.free_boost_timer)
+	r4._update_mods(0.1)
+	_check("免费加力窗口内 ship.boost_free 生效", r4.ship.boost_free)
+	_kill(r)
+	_kill(r2)
+	_kill(r3)
+	_kill(r4)
+
+func _test_awakenings() -> void:
+	var r := _new_run(166)
+	_clear_arena(r)
+	r.galaxy.bodies.clear()
+	r.ship.position = Vector2.ZERO
+	r.skills = [{"id": "pulse", "level": 3, "cd": 0.0}, {"id": "anchor", "level": 2, "cd": 0.0}]
+	_check("Lv3 技能进入超载觉醒池", r.awakenable_skills().size() == 2, "n=%d" % r.awakenable_skills().size())
+	r._apply_awaken("pulse", "pulse_fan")
+	_check("觉醒后技能到 Lv4 并记录分支",
+		int(r.skills[0]["level"]) == 4 and r.skill_awaken("pulse") == "pulse_fan")
+	r.ship.facing = 0.0
+	r.ship.vel = Vector2.ZERO
+	r.ship.fuel = r.ship.fuel_max
+	var am = r.spawn_enemy_missile(null, Vector2(120, 40), 0.0)
+	am.locked = true
+	r.skills[0]["cd"] = 0.0
+	r.cast_skill(0)
+	_check("聚能扇面把范围内导弹统一推向机头正前方",
+		absf(rad_to_deg(am.vel.angle())) <= EG.PULSE_SPREAD + 0.01,
+		"ang=%.1f" % rad_to_deg(am.vel.angle()))
+	_kill(r)
+
+	var r2 := _new_run(167)
+	_clear_arena(r2)
+	r2.galaxy.bodies.clear()
+	r2.ship.position = Vector2.ZERO
+	r2.skills = [{"id": "pulse", "level": 3, "cd": 0.0, "awaken": "pulse_stasis"}]
+	var se := _make_attacker_at(r2, Vector2(200, 0), "turret", 1)
+	se.reveal(true)
+	se.overheated = false
+	se.overheat_timer = 0.0
+	se.burst_left = 2
+	r2.ship.fuel = r2.ship.fuel_max
+	r2.cast_skill(0)
+	_check("零点静滞打断齐射并把过热延长 1.5 秒",
+		se.burst_left == 0 and se.overheated and se.overheat_timer >= EG.PULSE_STASIS_OVERHEAT,
+		"burst=%d heat=%.2f" % [se.burst_left, se.overheat_timer])
+	_kill(r2)
+
+	var r3 := _new_run(168)
+	_clear_arena(r3)
+	r3.galaxy.bodies.clear()
+	r3.ship.position = Vector2.ZERO
+	r3.ship.fuel = r3.ship.fuel_max
+	r3.skills = [{"id": "dash", "level": 3, "cd": 0.0, "awaken": "dash_afterimage"},
+		{"id": "beacon", "level": 3, "cd": 0.0, "awaken": "beacon_mirror"}]
+	r3.cast_skill(0)
+	_check("残影诱饵在冲刺起点留下 3 秒信标",
+		r3.decoys.size() == 1 and absf(float(r3.decoys[0].life) - EG.DASH_AFTERIMAGE_LIFE) < 0.01)
+	for d in r3.decoys.duplicate():
+		d.remove(false)
+	r3.decoys.clear()
+	r3.cast_skill(1)
+	_check("镜像双生一次投放两枚信标", r3.decoys.size() == 2, "n=%d" % r3.decoys.size())
+
+	var an := GravityAnchor.new()
+	an.run = r3
+	an.position = Vector2.ZERO
+	an.radius = EG.ANCHOR_RADIUS
+	an.bipolar = true
+	r3.world.add_child(an)
+	r3.anchors.append(an)
+	var fling = r3.spawn_enemy_missile(null, Vector2(120, 0), 0.0)
+	fling.locked = false
+	r3.on_anchor_gone(an)
+	_check("双极锚定沿切线甩出吸拢的导弹",
+		absf(absf(fling.vel.angle()) - PI * 0.5) < 0.02, "ang=%.2f" % fling.vel.angle())
+
+	# 技能替换：槽满选新技能 → 双槽对比 → 继承一半等级
+	var r4 := _new_run(169)
+	_clear_arena(r4)
+	r4.skills = [{"id": "pulse", "level": 3, "cd": 0.0}, {"id": "anchor", "level": 2, "cd": 0.0}]
+	r4.state = Run.State.LEVELUP
+	r4.pending_levels = 1
+	r4.upgrade_cards = [{"id": "skill_new", "skill_id": "dash", "replace": true,
+		"title": "解锁技能：相位滑行", "desc": "x", "rarity": "rare", "icon": "icon_skill"}]
+	r4.choose_upgrade(0)
+	_check("技能槽满时选新技能进入替换流程",
+		r4.state == Run.State.REPLACE_SKILL and r4._pending_skill == "dash")
+	r4.choose_skill_replace(1)
+	_check("替换后新技能继承原槽一半等级",
+		r4.skills[1]["id"] == "dash" and int(r4.skills[1]["level"]) == 1
+		and r4.state == Run.State.PLAYING)
+
+	# 取消替换不该白丢一次升级：把等级还回去并重新开一轮。
+	var r5 := _new_run(171)
+	_clear_arena(r5)
+	r5.skills = [{"id": "pulse", "level": 1, "cd": 0.0}, {"id": "anchor", "level": 1, "cd": 0.0}]
+	r5.state = Run.State.REPLACE_SKILL
+	r5._pending_skill = "dash"
+	r5.pending_levels = 0
+	r5.cancel_skill_replace()
+	_check("取消技能替换会退还这次升级",
+		r5.pending_levels == 1 and r5._pending_skill == "" and r5.state == Run.State.LEVELUP,
+		"pending=%d state=%d" % [r5.pending_levels, r5.state])
+	_kill(r3)
+	_kill(r4)
+	_kill(r5)
+
+func _test_shop_shelves() -> void:
+	var r := _new_run(170)
+	_clear_arena(r)
+	r.tokens = 30
+	r.state = Run.State.SHOP
+	r.shop_stock = r._roll_shop()
+	_check("商店固定三货架", r.shop_stock.size() == 3)
+	var kinds: Array = []
+	var prices: Array = []
+	for o in r.shop_stock:
+		kinds.append(str(o["kind"]))
+		prices.append(int(o["price"]))
+	_check("黑市货架必出改装或技能觉醒",
+		kinds[2] == "mod" or kinds[2] == "awaken", str(kinds))
+	_check("三货架价格区间 1~2 / 3~4 / 5~7",
+		prices[0] >= EG.SHOP_SHELF_MIN[0] and prices[0] <= EG.SHOP_SHELF_MAX[0]
+		and prices[1] >= EG.SHOP_SHELF_MIN[1] and prices[1] <= EG.SHOP_SHELF_MAX[1]
+		and prices[2] >= EG.SHOP_SHELF_MIN[2] and prices[2] <= EG.SHOP_SHELF_MAX[2], str(prices))
+	var before_tokens: int = r.tokens
+	var before_mods: int = r.mods.size()
+	var mod_offer: Dictionary = r.shop_stock[2]
+	r.buy_offer(2)
+	_check("黑市改装位买下即生效",
+		r.mods.size() > before_mods or mod_offer["kind"] == "awaken")
+	_check("购买扣除对应代币", r.tokens == before_tokens - int(mod_offer["price"]))
+
+	# 现场满额维修：不占背包格。
+	r.state = Run.State.SHOP
+	r.tokens = 9
+	r.ship.shield = 3.0
+	r.shop_stock = [{"kind": "service", "id": "service_repair", "price": 2, "sold": false,
+		"title": "现场满额维修", "desc": "x", "rarity": "rare", "icon": "icon_service", "shelf": "补给位"}]
+	var inv_before: int = r.inventory.size()
+	r.buy_offer(0)
+	_check("现场维修回满护盾且不占背包格",
+		absf(r.ship.shield - r.ship.shield_max) < 0.01 and r.inventory.size() == inv_before)
+
+	# 满包购买：直接进入丢弃替换流程，不再干脆拒买。
+	r.state = Run.State.SHOP
+	r.shop_inside = true
+	r.inventory = ["fuel", "repair"]
+	r.item_slots = 2
+	r.tokens = 5
+	r.shop_stock = [{"kind": "item", "id": "flare", "price": 1, "sold": false,
+		"title": "干扰弹", "desc": "x", "rarity": "rare", "icon": "icon_item_flare", "shelf": "战术道具位"}]
+	r.buy_offer(0)
+	_check("背包满时购买进入丢弃替换流程",
+		r.state == Run.State.DESTROY and r.tokens == 4 and r._pending_item == "flare")
+	r.destroy_and_take(0)
+	_check("丢弃后回到商店面板并拿到道具",
+		r.state == Run.State.SHOP and r.inventory.has("flare"))
 	_kill(r)
 
 func _test_bot_playability() -> Dictionary:

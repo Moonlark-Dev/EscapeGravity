@@ -6,6 +6,10 @@ var run
 var radius := EG.ANCHOR_RADIUS
 var force := EG.ANCHOR_FORCE
 var duration := EG.ANCHOR_DURATION
+## 引力水雷：消失时把吸成一团的导弹朝最近敌人齐射甩出。
+var fling := false
+## 双极锚定觉醒：消失瞬间沿切线高速甩射。
+var bipolar := false
 var life := 0.0
 var dead := false
 var _ring: Sprite2D
@@ -27,7 +31,7 @@ func step(delta: float) -> void:
 	_t += delta
 	life += delta
 	if life >= duration:
-		remove()
+		_finish()
 		return
 	var k: float = sin(clampf(life / duration, 0.0, 1.0) * PI)
 	_core.rotation -= delta * 2.0
@@ -43,6 +47,13 @@ func apply_to(missile: Node2D) -> Vector2:
 		return Vector2.ZERO
 	var k: float = 1.0 - dist / radius
 	return d.normalized() * force * (0.25 + 0.75 * k)
+
+func _finish() -> void:
+	if dead:
+		return
+	if run != null:
+		run.on_anchor_gone(self)
+	remove()
 
 func remove() -> void:
 	if dead:

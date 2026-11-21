@@ -2,7 +2,7 @@ class_name Run
 extends Node2D
 ## One run of Escape Gravity. Owns the world, the state machine and the rules.
 
-enum State { PLAYING, LEVELUP, SHOP, DESTROY, DEAD }
+enum State { PLAYING, LEVELUP, SHOP, DESTROY, DEAD, REPLACE_SKILL }
 
 var main
 var hud
@@ -52,6 +52,13 @@ var item_slots := EG.ITEM_SLOTS_BASE
 var selected_item := 0
 var skills: Array = []
 var absorb_radius := EG.MATTER_ABSORB
+## 核心改装（被动插件）：id -> 层数。仅本局有效。
+var mods: Dictionary = {}
+## 节能巡航油耗倍率（1.0 = 原价，最低 EG.ECO_CRUISE_MIN）。
+var eco_cruise := 1.0
+## 战地整备：消耗品生效后的免费加力窗口。
+var free_boost_timer := 0.0
+var _pending_skill := ""
 
 var player_hidden := false
 var fuel_dead_timer := 0.0
@@ -121,6 +128,7 @@ func _build_world() -> void:
 	skills.append({"id": "pulse", "level": 1, "cd": 0.0})
 	inventory = []
 	item_slots = EG.ITEM_SLOTS_BASE
+	ship.fuel_cost_mult = eco_cruise
 
 func _initial_spawn() -> void:
 	if test_mode:
@@ -239,8 +247,9 @@ func simulate(delta: float) -> void:
 
 	ship.step(delta, dir, boost)
 	_assist_fuel(delta)
+	_update_mods(delta)
 
-	for m in missiles:
+	for m in missiles.duplicate():
 		if m.dead:
 			continue
 		m.pull = _pull_on_missile(m)
@@ -337,7 +346,7 @@ func _update_skills(delta: float) -> void:
 
 func _assist_fuel(delta: float) -> void:
 	if assist_active:
-		ship.fuel = maxf(0.0, ship.fuel - EG.SHIP_FUEL_ASSIST * delta)
+		ship.fuel = maxf(0.0, ship.fuel - EG.SHIP_FUEL_ASSIST * delta * ship.fuel_cost_mult)
 
 func _pull_on_missile(m) -> Vector2:
 	var pull := Vector2.ZERO
@@ -390,33 +399,45 @@ func world_to_screen(pos: Vector2) -> Vector2:
 
 # ---------------------------------------------------------------- spawning
 
+## 五种主敌人随深度解锁轮换：炮塔 → 导弹巢 → 偏导母舰 → 引力阱舰 → 双子中继站。
+const ENEMY_KINDS := ["turret", "nest", "aegis", "singularity", "twin"]
+
+func enemy_kind_for_depth(d: int) -> String:
+	return ENEMY_KINDS[posmod(d - 1, ENEMY_KINDS.size())]
+
+## 深层不再靠疯狂堆血：+14%/层，并用精英词缀（深度 6 起每 4 层）提供难度。
+func is_elite_depth(d: int) -> bool:
+	if d < EG.ELITE_DEPTH_START:
+		return false
+	return (d - EG.ELITE_DEPTH_START) % EG.ELITE_EVERY == 0
+
 func spawn_enemy() -> void:
 	if current_enemy != null or state == State.DEAD:
 		return
-	var is_nest := depth % 3 == 2
-	var elite := depth % 5 == 0 and depth > 1
-	var e := Enemy.new()
-	e.run = self
-	e.kind = "nest" if is_nest else "turret"
-	e.depth = depth
-	e.elite = elite
-	var base_r := EG.NEST_RADIUS if is_nest else EG.TURRET_RADIUS
-	e.radius = base_r
-	e.max_hp = (EG.NEST_HP if is_nest else EG.TURRET_HP) * (1.0 + 0.22 * float(depth - 1)) * (1.6 if elite else 1.0)
-	e.hp = e.max_hp
-	e.speed_out = (EG.NEST_SPEED_OUT if is_nest else EG.TURRET_SPEED_OUT) * (1.0 + 0.02 * float(depth - 1))
-	e.speed_in = EG.NEST_SPEED_IN if is_nest else EG.TURRET_SPEED_IN
-	var rate: float = maxf(0.62, 1.0 - 0.035 * float(depth - 1))
-	e.fire_out = (EG.NEST_FIRE_OUT if is_nest else EG.TURRET_FIRE_OUT) * rate
-	e.fire_in = (EG.NEST_FIRE_IN if is_nest else EG.TURRET_FIRE_IN) * rate
-	e.burst = (EG.NEST_BURST if is_nest else EG.TURRET_BURST) + (1 if elite else 0)
-	e.max_locked = EG.NEST_MAX_LOCKED if is_nest else EG.MISSILE_MAX_LOCKED
-	e.overheat_time = EG.NEST_OVERHEAT if is_nest else EG.TURRET_OVERHEAT
+	var kind := enemy_kind_for_depth(depth)
+	var elite := is_elite_depth(depth)
+	var e := _make_attacker(kind, elite)
 	e.position = _next_enemy_position(e)
 	world.add_child(e)
 	enemies.append(e)
 	current_enemy = e
 	e.fire_timer = 1.5
+	if kind == "twin":
+		# 双子中继站：成对刷新、共享公转中心，间距 750px。
+		var partner := _make_attacker(kind, elite)
+		e.twin = partner
+		partner.twin = e
+		e.twin_leader = true
+		e.pair_angle = rng.randf() * TAU
+		e.pair_center = e.position - Vector2.RIGHT.rotated(e.pair_angle) * (EG.PYLON_GAP * 0.5)
+		e.position = e.pair_center + Vector2.RIGHT.rotated(e.pair_angle) * (EG.PYLON_GAP * 0.5)
+		partner.pair_center = e.pair_center
+		partner.pair_angle = e.pair_angle
+		partner.position = galaxy.push_out_of_bodies(
+			e.pair_center - Vector2.RIGHT.rotated(e.pair_angle) * (EG.PYLON_GAP * 0.5), partner.radius)
+		partner.fire_timer = 2.2
+		world.add_child(partner)
+		enemies.append(partner)
 	if hud != null and not player_hidden:
 		# The attacker stays undetected until it enters the screen; the spawn
 		# only hints that something is out there.
@@ -424,6 +445,87 @@ func spawn_enemy() -> void:
 	if shop_zone != null and is_on_screen(shop_zone.position):
 		Audio.play("sfx_alarm", -4.0)
 	shake = maxf(shake, 0.4)
+
+func _make_attacker(kind: String, elite: bool) -> Enemy:
+	var e := Enemy.new()
+	e.run = self
+	e.kind = kind
+	e.depth = depth
+	e.elite = elite
+	var base_hp := EG.TURRET_HP
+	match kind:
+		"nest":
+			e.radius = EG.NEST_RADIUS
+			base_hp = EG.NEST_HP
+			e.fire_out = EG.NEST_FIRE_OUT
+			e.fire_in = EG.NEST_FIRE_IN
+			e.burst = EG.NEST_BURST
+			e.overheat_time = EG.NEST_OVERHEAT
+			e.speed_out = EG.NEST_SPEED_OUT
+			e.speed_in = EG.NEST_SPEED_IN
+			e.max_locked = EG.NEST_MAX_LOCKED
+		"aegis":
+			e.radius = EG.AEGIS_RADIUS
+			base_hp = EG.AEGIS_HP
+			e.fire_out = EG.AEGIS_FIRE_OUT
+			e.fire_in = EG.AEGIS_FIRE_IN
+			e.burst = EG.AEGIS_BURST
+			e.overheat_time = EG.AEGIS_OVERHEAT
+			e.speed_out = EG.AEGIS_SPEED_OUT
+			e.speed_in = EG.AEGIS_SPEED_IN
+			e.max_locked = EG.MISSILE_MAX_LOCKED
+			e.facing = rng.randf() * TAU
+		"singularity":
+			e.radius = EG.RIG_RADIUS
+			base_hp = EG.RIG_HP
+			e.fire_out = EG.RIG_FIRE_OUT
+			e.fire_in = EG.RIG_FIRE_IN
+			e.burst = EG.RIG_BURST
+			e.overheat_time = EG.RIG_OVERHEAT
+			e.speed_out = EG.RIG_SPEED_OUT
+			e.speed_in = EG.RIG_SPEED_IN
+			e.max_locked = EG.MISSILE_MAX_LOCKED
+			e.state_timer = EG.RIG_REPEL_TIME
+		"twin":
+			e.radius = EG.PYLON_RADIUS
+			base_hp = EG.PYLON_HP
+			e.fire_out = EG.PYLON_FIRE_OUT
+			e.fire_in = EG.PYLON_FIRE_IN
+			e.burst = EG.PYLON_BURST
+			e.overheat_time = EG.PYLON_OVERHEAT
+			e.speed_out = EG.PYLON_SPEED_OUT
+			e.speed_in = EG.PYLON_SPEED_IN
+			e.max_locked = EG.MISSILE_MAX_LOCKED
+			e.facing = rng.randf() * TAU
+		_:
+			e.radius = EG.TURRET_RADIUS
+			base_hp = EG.TURRET_HP
+			e.fire_out = EG.TURRET_FIRE_OUT
+			e.fire_in = EG.TURRET_FIRE_IN
+			e.burst = EG.TURRET_BURST
+			e.overheat_time = EG.TURRET_OVERHEAT
+			e.speed_out = EG.TURRET_SPEED_OUT
+			e.speed_in = EG.TURRET_SPEED_IN
+			e.max_locked = EG.MISSILE_MAX_LOCKED
+	var growth: float = 1.0 + EG.DEPTH_HP_GROWTH * float(depth - 1)
+	e.max_hp = base_hp * growth * (EG.ELITE_HP_MULT if elite else 1.0)
+	var rate: float = maxf(0.62, 1.0 - EG.DEPTH_RATE_GROWTH * float(depth - 1))
+	e.fire_out *= rate
+	e.fire_in *= rate
+	e.speed_out *= 1.0 + 0.02 * float(depth - 1)
+	if elite:
+		e.burst += 1
+		e.affix = _roll_affix(kind)
+		if e.affix == "volatile":
+			e.max_hp *= 0.7
+	e.hp = e.max_hp
+	return e
+
+func _roll_affix(kind: String) -> String:
+	var pool := ["point_defense", "phase_blink", "volatile"]
+	if kind == "twin":
+		pool = ["point_defense", "volatile"]
+	return str(pool[rng.randi_range(0, pool.size() - 1)])
 
 ## Pulls the next attacker position from the pre-generated route.  The route
 ## only decides where content sits; the enemy still chases the player normally.
@@ -543,7 +645,7 @@ func _update_spawns(delta: float) -> void:
 			drone_timer = EG.DRONE_RETRY
 
 	if meteor_timer <= 0.0 and not player_hidden:
-		meteor_timer = EG.METEOR_INTERVAL
+		meteor_timer = EG.METEOR_INTERVAL * (EG.MOD_BELT_INTERVAL if has_mod("gravity_belt") else 1.0)
 		_spawn_meteor()
 
 	if matter_refill_timer <= 0.0:
@@ -763,18 +865,206 @@ func remove_drone(d, explode: bool = true) -> void:
 
 # ---------------------------------------------------------------- combat
 
-func spawn_enemy_missile(enemy: Enemy, muzzle: Vector2, angle: float) -> Missile:
+# ---------------------------------------------------------------- core mods
+
+func has_mod(id: String) -> bool:
+	return int(mods.get(id, 0)) > 0
+
+func mod_stacks(id: String) -> int:
+	return int(mods.get(id, 0))
+
+func add_mod(id: String) -> void:
+	if not Defs.MODS.has(id):
+		return
+	mods[id] = mini(EG.MOD_MAX_STACKS, int(mods.get(id, 0)) + 1)
+	if id == "curvature_wake":
+		_update_absorb()
+	if hud != null:
+		hud.toast("改装芯片：" + str(Defs.MODS[id]["name"]), Defs.mod_school_color(id), 2.4)
+	Audio.play("sfx_upgrade", -6.0)
+
+func all_mods_maxed() -> bool:
+	for id in Defs.MOD_ORDER:
+		if int(mods.get(id, 0)) < EG.MOD_MAX_STACKS:
+			return false
+	return true
+
+func roll_mod(mod_rng: RandomNumberGenerator) -> String:
+	var pool: Array = []
+	for id in Defs.MOD_ORDER:
+		if int(mods.get(id, 0)) < EG.MOD_MAX_STACKS:
+			pool.append(id)
+	if pool.is_empty():
+		pool = Defs.MOD_ORDER.duplicate()
+	return str(pool[mod_rng.randi_range(0, pool.size() - 1)])
+
+func relativist_bonus(m) -> float:
+	if not has_mod("relativist"):
+		return 0.0
+	var over: float = m.vel.length() - EG.MOD_RELATIVIST_BASE
+	if over <= 0.0:
+		return 0.0
+	return floorf(over / EG.MOD_RELATIVIST_STEP) * EG.MOD_RELATIVIST_DMG
+
+func meteor_knock_damage() -> float:
+	return EG.MOD_METEOR_KNOCK_DAMAGE if has_mod("mass_driver") else EG.METEOR_KNOCK_DAMAGE
+
+func recycle_reward() -> void:
+	if not has_mod("recycle_reactor"):
+		return
+	for s in skills:
+		s["cd"] = maxf(0.0, float(s["cd"]) - EG.MOD_RECYCLE_CD)
+	ship.fuel = minf(ship.fuel_max, ship.fuel + EG.MOD_RECYCLE_FUEL)
+
+func _update_absorb() -> void:
+	var wake: bool = has_mod("curvature_wake") and ship.vel.length() >= EG.MOD_WAKE_SPEED
+	absorb_radius = EG.MOD_WAKE_ABSORB if wake else EG.MATTER_ABSORB
+
+func _nearest_enemy(pos: Vector2):
+	var best = null
+	var bd := 1e20
+	for e in enemies:
+		if e.dead:
+			continue
+		var d: float = pos.distance_squared_to(e.position)
+		if d < bd:
+			bd = d
+			best = e
+	return best
+
+## 连锁殉爆：过热时把周围导弹全部脱锁并吸向该敌人。
+func _chain_detonate(e: Enemy) -> void:
+	for m in missiles:
+		if m.dead or m.position.distance_to(e.position) > EG.MOD_CHAIN_RADIUS:
+			continue
+		m.unlock()
+		m.chain = e
+
+## 共振奇点：引力锚与诱饵信标重叠时，区内导弹提速 60% 并刷新寿命。
+func _resonance_tick() -> void:
+	var zones: Array = []
+	for a in anchors:
+		if a == null or a.dead:
+			continue
+		for d in decoys:
+			if d == null or d.dead:
+				continue
+			if a.position.distance_to(d.position) <= a.radius:
+				zones.append(a.position)
+				break
+	if zones.is_empty():
+		return
+	for m in missiles:
+		if m.dead:
+			continue
+		for p in zones:
+			if m.position.distance_to(p) <= EG.MOD_RESONANCE_RADIUS:
+				m.speed = m.base_speed * EG.MOD_RESONANCE_SPEED
+				m.life = 0.0
+				if not m.is_locked() and m.vel.length() > 1.0:
+					m.vel = m.vel.normalized() * m.speed
+				break
+
+## 把一簇导弹甩出去：toward_enemy 时朝最近敌人，否则沿切线（双极锚定）。
+func _fling_missiles(pos: Vector2, radius: float, speed: float, toward_enemy: bool) -> void:
+	var target = _nearest_enemy(pos)
+	for m in missiles:
+		if m.dead or m.position.distance_to(pos) > radius:
+			continue
+		var dir: Vector2
+		if toward_enemy and target != null:
+			dir = (target.position - m.position).normalized()
+			m.chain = target
+		else:
+			dir = m.position - pos
+			if dir.length() < 1.0:
+				dir = Vector2.RIGHT
+			dir = dir.normalized().orthogonal()
+		m.speed = speed
+		m.vel = dir * speed
+		m.angle = dir.angle()
+		m.unlock()
+	Fx.warp(fx_layer, pos, Color(0.75, 0.55, 1.0, 0.75))
+
+func _update_mods(delta: float) -> void:
+	# 引力涡轮：环绕行星加速时把行星变成空中加油站。
+	if has_mod("gravity_turbine") and orbit_assist:
+		ship.fuel = minf(ship.fuel_max, ship.fuel + EG.MOD_TURBINE_FUEL * delta)
+		ship.boost_meter = minf(ship.boost_cap,
+			ship.boost_meter + ship.boost_cap * EG.MOD_TURBINE_BOOST * delta)
+	free_boost_timer = maxf(0.0, free_boost_timer - delta)
+	ship.boost_free = has_mod("battlefield_ready") and free_boost_timer > 0.0
+	_update_absorb()
+	if has_mod("resonance"):
+		_resonance_tick()
+
+## 敌方弹药梯度：深度 3 起开始混入二段加速弹，深层导弹巢会发射子母分裂弹。
+func roll_enemy_ammo(kind: String, d: int) -> String:
+	if d < 3:
+		return "normal"
+	if kind == "nest" and d >= 4 and rng.randf() < 0.35:
+		return "cluster"
+	if rng.randf() < minf(0.50, 0.10 * float(d - 2)):
+		return "booster"
+	return "normal"
+
+func spawn_enemy_missile(enemy: Enemy, muzzle: Vector2, angle: float, ammo: String = "normal") -> Missile:
 	var m := Missile.new()
 	m.run = self
+	m.kind = ammo
 	m.position = muzzle
 	m.angle = angle
-	m.speed = EG.MISSILE_SPEED
-	m.vel = Vector2.RIGHT.rotated(angle) * m.speed
+	var spd := EG.MISSILE_SPEED
+	match ammo:
+		"booster":
+			spd = EG.BOOSTER_SLOW_SPEED
+		"cluster":
+			spd = EG.MISSILE_SPEED
+	m.speed = spd
+	m.vel = Vector2.RIGHT.rotated(angle) * spd
 	m.source = enemy
 	world.add_child(m)
 	missiles.append(m)
 	Audio.play("sfx_launch", -8.0, rng.randf_range(0.94, 1.06))
 	Fx.sparks(fx_layer, muzzle, Color(1.0, 0.55, 0.3, 0.8), 5, 90.0)
+	return m
+
+## 子母分裂弹的三枚微型无锁弹头。
+func spawn_cluster_frag(pos: Vector2, angle: float, src) -> Missile:
+	var m := Missile.new()
+	m.run = self
+	m.kind = "frag"
+	m.position = pos
+	m.angle = angle
+	m.speed = EG.CLUSTER_FRAG_SPEED
+	m.vel = Vector2.RIGHT.rotated(angle) * m.speed
+	m.source = src
+	m.locked = false
+	m.seen = true
+	world.add_child(m)
+	missiles.append(m)
+	Fx.sparks(fx_layer, pos, Color(1.0, 0.7, 0.35, 0.9), 8, 160.0)
+	return m
+
+## 水雷弹：超载殉爆与引力水雷共用。无锁、慢速，脉冲可以把它反推回敌人身上。
+func spawn_mine(src, pos: Vector2, angle: float, speed: float = EG.MINE_SPEED) -> Missile:
+	var m := Missile.new()
+	m.run = self
+	m.kind = "mine"
+	m.position = pos
+	m.angle = angle
+	m.speed = speed
+	m.dmg = EG.MINE_DMG_ENEMY
+	m.vel = Vector2.RIGHT.rotated(angle) * speed
+	m.source = src
+	m.locked = false
+	m.seen = true
+	world.add_child(m)
+	# _ready 会把速度按弹种设为默认 90，超载殉爆的 120 要在之后写回。
+	m.speed = speed
+	m.base_speed = speed
+	missiles.append(m)
+	Fx.sparks(fx_layer, pos, Color(0.8, 0.4, 1.0, 0.8), 5, 90.0)
 	return m
 
 func target_position(m) -> Vector2:
@@ -801,6 +1091,20 @@ func sneak_missile_count() -> int:
 func on_missile_unlock(m) -> void:
 	stats.unlocks += 1
 	Fx.sparks(fx_layer, m.position, Color(1.0, 0.6, 0.3, 0.5), 4, 60.0)
+	# 近炸增幅：锁定中的导弹在 130px 内脱锁时，弹体伤害翻倍并回一点护盾。
+	if has_mod("proximity_charge") and m.position.distance_to(ship.position) <= EG.MOD_PROXIMITY_RADIUS:
+		m.dmg *= 2.0
+		ship.heal(EG.MOD_PROXIMITY_HEAL)
+		Fx.text(fx_layer, m.position + Vector2(0, -20), "近炸增幅", EG.C_MAGENTA, 16)
+		Fx.sparks(fx_layer, m.position, Color(1.0, 0.45, 0.75, 0.9), 10, 140.0)
+	# 惯性制导篡改：脱锁瞬间朝最近的主敌人微偏 12°（不重锁，仍吃引力）。
+	if has_mod("inertia_hack"):
+		var target = _nearest_enemy(m.position)
+		if target != null:
+			var want: float = (target.position - m.position).angle()
+			var diff: float = wrapf(want - m.vel.angle(), -PI, PI)
+			m.vel = m.vel.rotated(clampf(diff, -EG.MOD_INERTIA_ANGLE, EG.MOD_INERTIA_ANGLE))
+			m.angle = m.vel.angle()
 
 ## 撞击伤害只看法线速度：正面撞上去才疼，贴着表面掠过几乎不掉血。
 ## 撞敌人 ×1.5；撞敌人和撞天体一样，单次最高 5。
@@ -832,8 +1136,7 @@ func _resolve_collisions() -> void:
 				hurt_ship(dmg2, "外壳")
 				Fx.sparks(fx_layer, ship.position, Color(1.0, 0.5, 0.35, 0.8), 8, 120.0)
 
-	# 自杀无人机：撞玩家或敌人各 5 点伤害，撞击瞬间解体；不占敌人生成位，
-	# 也不产生物质/代币奖励。玩家靠机动甩开的部分在 Drone.step 里处理。
+	# 自杀无人机：撞玩家或敌人各 5 点伤害，撞击瞬间解体。
 	for d in drones.duplicate():
 		if d == null or not is_instance_valid(d) or d.dead:
 			continue
@@ -849,7 +1152,8 @@ func _resolve_collisions() -> void:
 			if e.dead:
 				continue
 			if d.position.distance_to(e.position) < d.radius + e.radius:
-				damage_enemy(e, EG.DRONE_DMG, d.position, false)
+				var drone_dmg: float = EG.MOD_TROJAN_DMG if d.hacked else EG.DRONE_DMG
+				damage_enemy(e, drone_dmg, d.position, false)
 				remove_drone(d, true)
 				break
 
@@ -864,13 +1168,13 @@ func _resolve_collisions() -> void:
 			if e.dead:
 				continue
 			if met.position.distance_to(e.position) < e.radius + met.radius:
-				var dmg := EG.METEOR_KNOCK_DAMAGE if met.knocked else EG.METEOR_DAMAGE
+				var dmg3 := meteor_knock_damage() if met.knocked else EG.METEOR_DAMAGE
 				remove_meteor(met, true)
-				damage_enemy(e, dmg, met.position, false)
+				damage_enemy(e, dmg3, met.position, false)
 				break
 
-	# Missiles.
-	for m in missiles:
+	# Missiles / frags / mines.
+	for m in missiles.duplicate():
 		if m.dead:
 			continue
 		var hit := false
@@ -879,9 +1183,17 @@ func _resolve_collisions() -> void:
 				continue
 			if m.source == e and m.is_locked():
 				continue
+			if e.try_intercept(m):
+				remove_missile(m, true)
+				hit = true
+				break
 			if m.position.distance_to(e.position) < e.radius + EG.MISSILE_RADIUS:
+				var dealt: float = float(m.dmg)
+				if has_mod("relativist"):
+					dealt += relativist_bonus(m)
 				remove_missile(m, false)
-				damage_enemy(e, EG.MISSILE_DMG_ENEMY, m.position, true)
+				damage_enemy(e, dealt, m.position, true)
+				recycle_reward()
 				hit = true
 				break
 		if hit:
@@ -900,36 +1212,59 @@ func _resolve_collisions() -> void:
 			continue
 		if not player_hidden and m.position.distance_to(ship.position) < EG.MISSILE_RADIUS + ship.R + 2.0:
 			remove_missile(m, true)
-			hurt_ship(EG.MISSILE_DMG_SHIP, "导弹")
+			if m.kind == "mine":
+				hurt_ship(EG.MINE_DMG_SHIP, "水雷")
+			else:
+				hurt_ship(EG.MISSILE_DMG_SHIP, "导弹")
 			continue
 		for b in galaxy.bodies:
 			if m.position.distance_to(b.position) < b.radius + EG.MISSILE_RADIUS:
 				remove_missile(m, true)
+				recycle_reward()
 				break
 
 func hit_ship_by_meteor(met: Meteor) -> void:
 	var away: Vector2 = (met.position - ship.position)
 	if away.length() < 1.0:
 		away = ship.vel if ship.vel.length() > 1.0 else Vector2.RIGHT.rotated(rng.randf() * TAU)
-	met.knock(away + ship.vel * 0.7, 210.0)
+	var knock_speed := 210.0
+	# 曲率尾流：高速时把陨石撞飞的速度翻倍。
+	if has_mod("curvature_wake") and ship.vel.length() >= EG.MOD_WAKE_SPEED:
+		knock_speed = 420.0
+	met.knock(away + ship.vel * 0.7, knock_speed)
 	met.position = ship.position + away.normalized() * (met.radius + ship.R + 4.0)
 	met.hit_cd = 0.7
-	ship.vel *= 0.82
-	hurt_ship(EG.METEOR_DAMAGE, "陨石")
+	# 引力碎星带：撞击陨石不再掉护盾、也不减速，玩家变成一根太空台球杆。
+	if not has_mod("gravity_belt"):
+		ship.vel *= 0.82
+		hurt_ship(EG.METEOR_DAMAGE, "陨石")
 	shake = maxf(shake, 0.25)
 
 func damage_enemy(e: Enemy, amount: float, pos: Vector2, big_fx: bool) -> void:
 	if e.dead:
 		return
-	e.take_hit(amount)
-	stats.damage += amount
+	var res: Dictionary = e.apply_hit(amount, pos)
+	var dealt: float = float(res.get("damage", amount))
+	stats.damage += dealt
 	stats.hits += 1
-	Fx.explosion(fx_layer, pos, 0.42 if not big_fx else 0.55, false)
-	Fx.text(fx_layer, pos, "%d" % roundi(amount), Color(1.0, 0.78, 0.55), 24)
+	Fx.explosion(fx_layer, pos, 0.55 if big_fx else 0.42, false)
+	Fx.text(fx_layer, pos, "%d" % roundi(dealt), Color(1.0, 0.78, 0.55), 24)
+	if bool(res.get("crit", false)):
+		Fx.text(fx_layer, pos + Vector2(0, -30), "舰尾暴击", EG.C_AMBER, 18)
+		Fx.warp(fx_layer, pos, Color(1.0, 0.7, 0.35, 0.7))
+	elif bool(res.get("blocked_front", false)):
+		Fx.text(fx_layer, pos + Vector2(0, -26), "护盾削减", EG.C_CYAN, 15)
+		Fx.sparks(fx_layer, pos, Color(0.5, 0.9, 1.0, 0.9), 10, 130.0)
 	shake = maxf(shake, 0.45)
 	if hud != null:
 		hud.flash(Color(1.0, 0.75, 0.4, 0.22), 0.12)
 	Audio.play("sfx_missile_hit", -3.0)
+	if bool(res.get("overheated", false)) and e.hp > 0.0:
+		# 超载殉爆：每次过热的瞬间向四周抛射水雷弹。
+		if e.affix == "volatile":
+			e.scatter_mines()
+		if has_mod("chain_detonation"):
+			_chain_detonate(e)
 	if e.hp <= 0.0:
 		kill_enemy(e)
 
@@ -937,11 +1272,10 @@ func kill_enemy(e: Enemy) -> void:
 	if e.dead:
 		return
 	var pos := e.position
+	var partner: Enemy = e.twin
 	e.remove()
 	enemies.erase(e)
-	if current_enemy == e:
-		current_enemy = null
-	kills += 1
+	e.twin = null
 	shake = maxf(shake, 1.2)
 	Fx.explosion(fx_layer, pos, 3.0, true)
 	Fx.explosion(fx_layer, pos, 2.0, true)
@@ -949,7 +1283,31 @@ func kill_enemy(e: Enemy) -> void:
 	Audio.play("sfx_explosion_big", -2.0)
 	if hud != null:
 		hud.flash(Color(1.0, 0.85, 0.6, 0.3), 0.25)
+	if current_enemy == e:
+		current_enemy = null
+	# 双子中继站：一座倒下后另一座失去联动并暴走，遭遇战要打到两座都倒下。
+	if partner != null and is_instance_valid(partner) and not partner.dead:
+		partner.twin = null
+		partner.twin_leader = false
+		partner.pair_center = partner.position
+		partner.heal_delay = 0.0
+		partner.heal_left = 0.0
+		partner.speed_in *= 1.4
+		partner.speed_out *= 1.2
+		partner.fire_in = maxf(0.6, partner.fire_in * 0.8)
+		partner.fire_out = maxf(1.2, partner.fire_out * 0.85)
+		partner.elite = true
+		if current_enemy == null:
+			current_enemy = partner
+		if hud != null:
+			hud.toast("一座中继站被摧毁 · 另一座失去联动并开始暴走", EG.C_MAGENTA, 2.4)
+	if current_enemy == null and enemies.size() > 0:
+		current_enemy = enemies[0]
+	if current_enemy != null:
+		# 本场遭遇战还没结束：不推进深度、不刷新修整区。
+		return
 	scatter_matter_at(pos, 42, 460.0)
+	kills += 1
 	if rng.randf() < 0.25 or e.in_view or e.elite:
 		tokens = mini(EG.MAX_TOKENS, tokens + 1)
 		Fx.text(fx_layer, pos + Vector2(0, -60), "+1 代币", EG.C_MAGENTA, 20)
@@ -1115,6 +1473,13 @@ func destroy_and_take(index: int) -> void:
 		hud.hide_destroy()
 		hud.toast("已丢弃并放入 " + Defs.ITEMS[_pending_item]["name"], EG.C_CYAN, 2.0)
 	_pending_item = ""
+	if shop_inside:
+		# 商店里买满包 → 丢弃替换后回到商店面板，而不是把玩家晾在空场。
+		state = State.SHOP
+		shop_open = true
+		if hud != null:
+			hud.show_shop(shop_stock, tokens)
+		return
 	if pending_levels > 0:
 		begin_levelup()
 	else:
@@ -1150,9 +1515,13 @@ func use_item_slot(index: int) -> void:
 		"decoy":
 			_drop_decoy(ship.position + Vector2.RIGHT.rotated(ship.facing) * 150.0, ship.vel * 0.4, 7.0)
 			Fx.warp(fx_layer, ship.position, Color(1.0, 0.4, 0.8, 0.7))
+		"mine":
+			_spawn_gravity_mine()
 	inventory.remove_at(index)
 	selected_item = clampi(selected_item, 0, maxi(0, inventory.size() - 1))
 	Audio.play("sfx_token", -6.0)
+	if has_mod("battlefield_ready"):
+		free_boost_timer = EG.MOD_READY_TIME
 	if hud != null:
 		hud.toast("使用 " + Defs.ITEMS[id]["name"], EG.C_TEXT, 1.6)
 
@@ -1173,6 +1542,28 @@ func _use_flare() -> void:
 	Fx.warp(fx_layer, ship.position, Color(1.0, 0.85, 0.4, 0.8))
 	Fx.sparks(fx_layer, ship.position + behind * 30.0, Color(1.0, 0.8, 0.4, 0.9), 14, 220.0)
 	Audio.play("sfx_pulse", -6.0)
+
+func _spawn_gravity_mine() -> void:
+	var a := GravityAnchor.new()
+	a.run = self
+	a.radius = 360.0
+	a.duration = 3.5
+	a.force = EG.ANCHOR_FORCE
+	a.fling = true
+	a.position = ship.position
+	world.add_child(a)
+	anchors.append(a)
+	Fx.warp(fx_layer, a.position, Color(0.7, 0.45, 1.0, 0.9))
+	Audio.play("sfx_gravity", -4.0)
+
+## 引力锚 / 引力水雷消失时的收尾：双极锚定沿切线甩出，水雷朝最近敌人齐射。
+func on_anchor_gone(a) -> void:
+	if a == null:
+		return
+	if a.bipolar:
+		_fling_missiles(a.position, a.radius, 340.0, false)
+	if a.fling:
+		_fling_missiles(a.position, a.radius + 80.0, EG.MOD_RESONANCE_FLING, true)
 
 func _drop_decoy(pos: Vector2, vel: Vector2, life: float) -> Decoy:
 	var d := Decoy.new()
@@ -1197,6 +1588,9 @@ func on_decoy_gone(d: Decoy, explode: bool) -> void:
 			m.unlock()
 	if explode:
 		Fx.explosion(fx_layer, d.position, 0.45, false)
+	# 共振奇点：信标结束时把攒成一团的导弹朝最近敌人齐射甩出。
+	if has_mod("resonance"):
+		_fling_missiles(d.position, EG.MOD_RESONANCE_RADIUS, EG.MOD_RESONANCE_FLING, true)
 
 func _apply_decoy_orders() -> void:
 	for m in missiles:
@@ -1222,7 +1616,7 @@ func cast_skill(slot: int) -> void:
 		Audio.play("sfx_ui_click", -16.0, 0.7)
 		return
 	var data: Dictionary = Defs.SKILLS[s["id"]]
-	var cost: float = float(data["fuel"])
+	var cost: float = float(data["fuel"]) * eco_cruise
 	if ship.fuel < cost:
 		if hud != null:
 			hud.toast("燃料不足，无法释放" + str(data["name"]), EG.C_AMBER, 1.8)
@@ -1241,43 +1635,84 @@ func cast_skill(slot: int) -> void:
 		"beacon":
 			_cast_beacon(lv)
 
+func skill_awaken(id: String) -> String:
+	for s in skills:
+		if s["id"] == id:
+			return str(s.get("awaken", ""))
+	return ""
+
 func _cast_pulse(lv: int) -> void:
+	var awake := skill_awaken("pulse")
 	var radius := EG.PULSE_RADIUS * (1.0 + 0.15 * float(lv - 1))
 	var impulse := EG.PULSE_IMPULSE * (1.0 + 0.15 * float(lv - 1))
-	# 偏转分界线 = 玩家的移动方向（速度方向）；静止时退回面向，保证结果可预期。
-	var travel: Vector2 = ship.vel
-	if travel.length() < 20.0:
-		travel = Vector2.RIGHT.rotated(ship.facing)
-	var line_dir := travel.normalized()
-	var left_dir := line_dir.orthogonal()   # 屏幕坐标系里的左侧法线
-	for m in missiles:
-		if m.dead:
-			continue
-		var d: Vector2 = m.position - ship.position
-		if d.length() > radius:
-			continue
-		var radial: Vector2 = d.normalized()
-		var tangent: Vector2 = radial.orthogonal()
-		var side: float = line_dir.cross(radial)   # <0 分界线左侧，>0 右侧
-		if absf(side) < 0.06:
-			# 正压在分界线上：先沿用导弹原有的横向速度，仍无法判定才随机。
-			side = line_dir.cross(m.vel)
-			if absf(side) < 0.001:
-				side = -1.0 if rng.randf() < 0.5 else 1.0
-		# 选与所在侧同向的切线，导弹被推离分界线而不是越过它。
-		var want: Vector2 = left_dir * (-signf(side))
-		if tangent.dot(want) < 0.0:
-			tangent = -tangent
-		tangent = tangent.rotated(deg_to_rad(rng.randf_range(-EG.PULSE_SPREAD, EG.PULSE_SPREAD)))
-		m.vel = tangent * impulse
-		m.angle = tangent.angle()
-		m.unlock()
-	# 脉冲对自杀无人机是硬克制：范围内的无人机原地解体，不被推走。
+	if awake == "pulse_stasis":
+		radius = EG.PULSE_STASIS_RADIUS
+	if awake == "pulse_fan":
+		# 聚能扇面：不再向两侧平分推开，而是统一推向飞船机头正前方。
+		var fwd := Vector2.RIGHT.rotated(ship.facing)
+		for m in missiles.duplicate():
+			if m.dead:
+				continue
+			if m.position.distance_to(ship.position) > radius:
+				continue
+			var spread: float = deg_to_rad(rng.randf_range(-EG.PULSE_SPREAD, EG.PULSE_SPREAD))
+			var dir: Vector2 = fwd.rotated(spread)
+			m.vel = dir * impulse
+			m.angle = dir.angle()
+			m.unlock()
+	else:
+		# 偏转分界线 = 玩家的移动方向（速度方向）；静止时退回面向。
+		var travel: Vector2 = ship.vel
+		if travel.length() < 20.0:
+			travel = Vector2.RIGHT.rotated(ship.facing)
+		var line_dir := travel.normalized()
+		var left_dir := line_dir.orthogonal()
+		for m in missiles.duplicate():
+			if m.dead:
+				continue
+			var d: Vector2 = m.position - ship.position
+			if d.length() > radius:
+				continue
+			var radial: Vector2 = d.normalized()
+			var tangent: Vector2 = radial.orthogonal()
+			var side: float = line_dir.cross(radial)
+			if absf(side) < 0.06:
+				side = line_dir.cross(m.vel)
+				if absf(side) < 0.001:
+					side = -1.0 if rng.randf() < 0.5 else 1.0
+			var want: Vector2 = left_dir * (-signf(side))
+			if tangent.dot(want) < 0.0:
+				tangent = -tangent
+			tangent = tangent.rotated(deg_to_rad(rng.randf_range(-EG.PULSE_SPREAD, EG.PULSE_SPREAD)))
+			m.vel = tangent * impulse
+			m.angle = tangent.angle()
+			m.unlock()
+	# 零点静滞：脉冲波及敌人本体时打断齐射并延长过热。
+	if awake == "pulse_stasis":
+		for e in enemies:
+			if e.dead:
+				continue
+			if e.position.distance_to(ship.position) <= radius + e.radius:
+				e.stasis(EG.PULSE_STASIS_OVERHEAT)
+	# 质量投射器：脉冲也能把范围内的陨石高速轰飞。
+	if has_mod("mass_driver"):
+		for met in meteors:
+			if met.dead:
+				continue
+			var dmet: Vector2 = met.position - ship.position
+			if dmet.length() > radius:
+				continue
+			var dir2: Vector2 = dmet.normalized() if dmet.length() > 1.0 else Vector2.RIGHT
+			met.knock(dir2, EG.MOD_MASS_DRIVER_KNOCK)
+	# 木马协议：无人机被反向骇入，撞向主敌人；否则原地解体。
 	for d in drones.duplicate():
 		if d == null or not is_instance_valid(d) or d.dead:
 			continue
 		if d.position.distance_to(ship.position) <= radius:
-			remove_drone(d, true)
+			if has_mod("trojan"):
+				_hack_drone(d)
+			else:
+				remove_drone(d, true)
 	Fx.warp(fx_layer, ship.position, Color(0.5, 0.95, 1.0, 0.9))
 	var wave := Assets.world_sprite("shockwave", true)
 	wave.position = ship.position
@@ -1293,12 +1728,26 @@ func _cast_pulse(lv: int) -> void:
 	shake = maxf(shake, 0.4)
 	Audio.play("sfx_pulse", -3.0)
 
+func _hack_drone(d) -> void:
+	var target = _nearest_enemy(d.position)
+	if target == null:
+		remove_drone(d, true)
+		return
+	d.hacked = true
+	d.locked = false
+	d.speed = EG.MOD_TROJAN_SPEED
+	d.vel = (target.position - d.position).normalized() * d.speed
+	Fx.warp(fx_layer, d.position, Color(1.0, 0.45, 0.8, 0.8))
+	Fx.text(fx_layer, d.position, "木马协议", EG.C_MAGENTA, 16)
+	Audio.play("sfx_dash", -10.0)
+
 func _cast_anchor(lv: int) -> void:
 	var a := GravityAnchor.new()
 	a.run = self
 	a.radius = EG.ANCHOR_RADIUS * (1.0 + 0.19 * float(lv - 1))
 	a.duration = EG.ANCHOR_DURATION + float(lv - 1)
 	a.force = EG.ANCHOR_FORCE
+	a.bipolar = skill_awaken("anchor") == "anchor_bipolar"
 	a.position = ship.position + Vector2.RIGHT.rotated(ship.facing) * 170.0
 	world.add_child(a)
 	anchors.append(a)
@@ -1312,17 +1761,31 @@ func _cast_dash(lv: int) -> void:
 		dir = Vector2.RIGHT.rotated(ship.facing)
 	var speed := EG.DASH_SPEED * (1.0 + 0.16 * float(lv - 1))
 	var time := EG.DASH_TIME * (1.0 + 0.18 * float(lv - 1))
+	var origin: Vector2 = ship.position
 	ship.dash(dir, speed, time)
 	Fx.sparks(fx_layer, ship.position, Color(0.5, 1.0, 0.85, 0.9), 12, 220.0)
 	Fx.warp(fx_layer, ship.position, Color(0.45, 1.0, 0.8, 0.7))
+	# 残影诱饵：冲刺起点留下一枚持续 3 秒的微型诱饵信标。
+	if skill_awaken("dash") == "dash_afterimage":
+		var d := _drop_decoy(origin, Vector2.ZERO, EG.DASH_AFTERIMAGE_LIFE)
+		d.scale = Vector2.ONE * 0.7
 	Audio.play("sfx_dash", -4.0)
 	shake = maxf(shake, 0.25)
 
 func _cast_beacon(lv: int) -> void:
 	var life := 6.0 + 2.0 * float(lv - 1)
-	var d := _drop_decoy(ship.position + Vector2.RIGHT.rotated(ship.facing) * 140.0, ship.vel * 0.2, life)
-	d.modulate = Color(1.0, 0.8, 0.95)
-	Fx.warp(fx_layer, d.position, Color(1.0, 0.4, 0.8, 0.7))
+	if skill_awaken("beacon") == "beacon_mirror":
+		# 镜像双生：机身前后各投一枚。
+		var half := life * EG.BEACON_MIRROR_LIFE
+		var front := _drop_decoy(ship.position + Vector2.RIGHT.rotated(ship.facing) * 140.0, ship.vel * 0.2, half)
+		front.modulate = Color(1.0, 0.8, 0.95)
+		var back := _drop_decoy(ship.position - Vector2.RIGHT.rotated(ship.facing) * 140.0, ship.vel * 0.2, half)
+		back.modulate = Color(0.95, 0.75, 1.0)
+		Fx.warp(fx_layer, back.position, Color(1.0, 0.4, 0.8, 0.7))
+	else:
+		var d := _drop_decoy(ship.position + Vector2.RIGHT.rotated(ship.facing) * 140.0, ship.vel * 0.2, life)
+		d.modulate = Color(1.0, 0.8, 0.95)
+		Fx.warp(fx_layer, d.position, Color(1.0, 0.4, 0.8, 0.7))
 	Audio.play("sfx_gravity", -6.0, 1.2)
 
 func unowned_skills() -> Array:
@@ -1359,6 +1822,16 @@ func choose_upgrade(index: int) -> void:
 	if state != State.LEVELUP or index < 0 or index >= upgrade_cards.size():
 		return
 	var card: Dictionary = upgrade_cards[index]
+	# 技能槽满时也能选新技能：先进入“双槽对比替换”流程，替换后继承一半等级。
+	if card["id"] == "skill_new" and bool(card.get("replace", false)):
+		_pending_skill = str(card["skill_id"])
+		upgrade_cards = []
+		pending_levels = maxi(0, pending_levels - 1)
+		state = State.REPLACE_SKILL
+		if hud != null:
+			hud.hide_levelup()
+			hud.show_skill_replace(skills, _pending_skill)
+		return
 	_apply_upgrade(card)
 	upgrade_cards = []
 	pending_levels = maxi(0, pending_levels - 1)
@@ -1368,8 +1841,48 @@ func choose_upgrade(index: int) -> void:
 		return
 	if hud != null:
 		hud.hide_levelup()
+	_resume_play()
+
+## 技能替换：选中的槽位被新技能占用，并按原等级的一半继承。
+func choose_skill_replace(index: int) -> void:
+	if state != State.REPLACE_SKILL:
+		return
+	if index < 0 or index >= skills.size() or _pending_skill == "":
+		cancel_skill_replace()
+		return
+	var old_lv := int(skills[index]["level"])
+	var new_lv := maxi(1, int(floor(float(old_lv) * 0.5)))
+	var old_name: String = str(Defs.SKILLS[skills[index]["id"]]["name"])
+	var new_name: String = str(Defs.SKILLS[_pending_skill]["name"])
+	skills[index] = {"id": _pending_skill, "level": new_lv, "cd": 0.0}
+	_pending_skill = ""
+	if hud != null:
+		hud.hide_skill_replace()
+		hud.toast("以 %s 替换 %s · 继承 Lv%d" % [new_name, old_name, new_lv], EG.C_CYAN, 2.4)
+	state = State.PLAYING
+	_resume_play()
+	Audio.play("sfx_upgrade", -8.0)
+
+## 取消替换不该白丢一次升级：把这次等级还回去并重新开一轮（等于重摇）。
+func cancel_skill_replace() -> void:
+	if state != State.REPLACE_SKILL:
+		return
+	_pending_skill = ""
+	pending_levels += 1
+	if hud != null:
+		hud.hide_skill_replace()
+	state = State.PLAYING
+	_resume_play()
+
+func _resume_play() -> void:
+	if state == State.DEAD or state == State.DESTROY:
+		return
 	if pending_levels > 0:
 		begin_levelup()
+	elif player_hidden and safe_zone != null and safe_zone.entered:
+		state = State.PLAYING
+		if hud != null:
+			hud.clear_overlay()
 	else:
 		state = State.PLAYING
 
@@ -1379,13 +1892,16 @@ func _apply_upgrade(card: Dictionary) -> void:
 			ship.heal(ship.shield_max * 0.25)
 		"repair_full":
 			ship.shield = ship.shield_max
-		"fuel_25":
-			ship.fuel = minf(ship.fuel_max, ship.fuel + ship.fuel_max * 0.25)
+		"eco_cruise":
+			# 节能巡航取代“恢复 25% 燃料”：进站必满油，燃料卡是废卡；
+			# 油耗折扣才是真正和 500 基础池挂钩的续航强化。
+			eco_cruise = maxf(EG.ECO_CRUISE_MIN, eco_cruise * EG.ECO_CRUISE_MULT)
+			ship.fuel_cost_mult = eco_cruise
 		"fuel_max_10":
-			ship.fuel_max += 10.0
+			ship.fuel_max += EG.FUEL_MAX_CARD_A
 			ship.fuel = ship.fuel_max
 		"fuel_max_20":
-			ship.fuel_max += 20.0
+			ship.fuel_max += EG.FUEL_MAX_CARD_B
 			ship.fuel = ship.fuel_max
 		"slot":
 			item_slots = mini(EG.ITEM_SLOTS_MAX, item_slots + 1)
@@ -1403,6 +1919,10 @@ func _apply_upgrade(card: Dictionary) -> void:
 			ship.boost_mult *= 1.07
 		"item":
 			add_item(card.get("item_id", "fuel"))
+		"mod_card":
+			add_mod(str(card.get("mod_id", "gravity_turbine")))
+		"skill_awaken":
+			_apply_awaken(str(card.get("skill_id", "pulse")), str(card.get("awaken", "")))
 		"skill_new":
 			skills.append({"id": card["skill_id"], "level": 1, "cd": 0.0})
 		"skill_up":
@@ -1411,6 +1931,27 @@ func _apply_upgrade(card: Dictionary) -> void:
 					s["level"] = mini(3, int(s["level"]) + 1)
 					break
 	Audio.play("sfx_upgrade", -8.0)
+
+func _apply_awaken(skill_id: String, awaken: String) -> void:
+	if awaken == "" or not Defs.AWAKENINGS.has(awaken):
+		return
+	for s in skills:
+		if s["id"] == skill_id:
+			s["awaken"] = awaken
+			s["level"] = 4
+			break
+	if hud != null:
+		hud.toast("超载觉醒：" + str(Defs.AWAKENINGS[awaken]["name"]), EG.C_AMBER, 2.6)
+
+func awakenable_skills() -> Array:
+	var out: Array = []
+	for s in skills:
+		if int(s["level"]) < 3 or str(s.get("awaken", "")) != "":
+			continue
+		for aid in Defs.AWAKEN_ORDER:
+			if str(Defs.AWAKENINGS[aid]["skill"]) == str(s["id"]):
+				out.append({"skill": str(s["id"]), "awaken": aid})
+	return out
 
 # ---------------------------------------------------------------- zones
 
@@ -1497,41 +2038,104 @@ func close_shop() -> void:
 		hud.hide_shop()
 	Audio.play("sfx_ui_click", -6.0)
 
+## 商店固定三货架：1 补给位（1~2）/ 2 战术道具位（3~4）/ 3 黑市改装位（5~7）。
 func _roll_shop() -> Array:
 	var stock: Array = []
-	var pool := Defs.ITEM_ORDER.duplicate()
-	pool.shuffle()
-	for i in range(3):
-		var id: String = pool[i % pool.size()]
-		var price: int = {"common": 2, "rare": 3, "epic": 4, "legend": 5}.get(Defs.ITEMS[id]["rarity"], 3)
-		if id == "fuel" or id == "repair":
-			price = mini(price, 2)
-		stock.append({"item": id, "price": price, "sold": false})
+	var sup := ["repair", "fuel", "service_repair"]
+	stock.append(_item_offer(str(sup[rng.randi_range(0, sup.size() - 1)]), "补给位",
+		rng.randi_range(EG.SHOP_SHELF_MIN[0], EG.SHOP_SHELF_MAX[0])))
+	var tac := ["flare", "decoy", "charge", "mine", "service_full_boost"]
+	stock.append(_item_offer(str(tac[rng.randi_range(0, tac.size() - 1)]), "战术道具位",
+		rng.randi_range(EG.SHOP_SHELF_MIN[1], EG.SHOP_SHELF_MAX[1])))
+	var price3 := rng.randi_range(EG.SHOP_SHELF_MIN[2], EG.SHOP_SHELF_MAX[2])
+	if awakenable_skills().size() > 0 and rng.randf() < 0.45:
+		var pick: Array = awakenable_skills()
+		var entry: Dictionary = pick[rng.randi_range(0, pick.size() - 1)]
+		var aw: Dictionary = Defs.AWAKENINGS[entry["awaken"]]
+		stock.append({
+			"kind": "awaken", "id": entry["awaken"], "skill_id": entry["skill"],
+			"title": "觉醒：" + str(aw["name"]), "desc": str(aw["desc"]),
+			"rarity": str(aw["rarity"]), "icon": "icon_awaken",
+			"shelf": "黑市改装位", "price": price3, "sold": false,
+		})
+	else:
+		var mid := roll_mod(rng)
+		var mod: Dictionary = Defs.MODS[mid]
+		stock.append({
+			"kind": "mod", "id": mid, "title": "改装：" + str(mod["name"]),
+			"desc": str(mod["desc"]), "rarity": str(mod["rarity"]),
+			"icon": str(Defs.MOD_SCHOOLS[mod["school"]]["icon"]),
+			"shelf": "黑市改装位", "price": price3, "sold": false,
+		})
 	return stock
+
+func _item_offer(id: String, shelf: String, price: int) -> Dictionary:
+	if Defs.SERVICES.has(id):
+		var sv: Dictionary = Defs.SERVICES[id]
+		return {
+			"kind": "service", "id": id, "title": str(sv["name"]), "desc": str(sv["desc"]),
+			"rarity": str(sv["rarity"]), "icon": str(sv["icon"]),
+			"shelf": shelf, "price": price, "sold": false,
+		}
+	var it: Dictionary = Defs.ITEMS[id]
+	return {
+		"kind": "item", "id": id, "title": str(it["name"]), "desc": str(it["desc"]),
+		"rarity": str(it["rarity"]), "icon": str(it["icon"]),
+		"shelf": shelf, "price": price, "sold": false,
+	}
 
 func buy_offer(index: int) -> void:
 	if state != State.SHOP or index < 0 or index >= shop_stock.size():
 		return
 	var offer: Dictionary = shop_stock[index]
-	if offer["sold"]:
+	if bool(offer["sold"]):
 		return
 	if tokens < int(offer["price"]):
 		if hud != null:
 			hud.toast("代币不足", EG.C_MAGENTA, 1.6)
 		Audio.play("sfx_ui_click", -12.0, 0.6)
 		return
-	if inventory.size() >= item_slots:
-		if hud != null:
-			hud.toast("物品栏已满，先丢弃一件道具", EG.C_AMBER, 2.0)
-		return
 	tokens -= int(offer["price"])
 	offer["sold"] = true
-	inventory.append(offer["item"])
+	match str(offer["kind"]):
+		"mod":
+			add_mod(str(offer["id"]))
+			if hud != null:
+				hud.toast("购入改装：" + str(Defs.MODS[offer["id"]]["name"]),
+					Defs.mod_school_color(str(offer["id"])), 2.2)
+		"awaken":
+			_apply_awaken(str(offer.get("skill_id", "pulse")), str(offer["id"]))
+		"service":
+			_apply_service(str(offer["id"]))
+			if hud != null:
+				hud.toast("购入服务：" + str(Defs.SERVICES[offer["id"]]["name"]), EG.C_MINT, 2.2)
+		_:
+			var id := str(offer["id"])
+			if inventory.size() < item_slots:
+				inventory.append(id)
+				if hud != null:
+					hud.toast("购入 " + Defs.ITEMS[id]["name"], Defs.item_rarity_color(id), 2.0)
+			else:
+				# 背包已满：直接复用现成的“丢弃替换”流程，不再干脆拒买。
+				_pending_item = id
+				state = State.DESTROY
+				if hud != null:
+					hud.hide_shop()
+					hud.show_destroy(inventory, id)
+				Audio.play("sfx_token", -4.0)
+				return
 	Audio.play("sfx_token", -4.0)
-	var it: String = offer["item"]
 	if hud != null:
-		hud.toast("购入 " + Defs.ITEMS[it]["name"], Defs.item_rarity_color(it), 2.0)
 		hud.refresh_shop(shop_stock, tokens)
+
+func _apply_service(id: String) -> void:
+	match id:
+		"service_repair":
+			ship.shield = ship.shield_max
+			Fx.text(fx_layer, ship.position + Vector2(0, -34), "护盾已满", EG.C_CYAN, 20)
+		"service_full_boost":
+			ship.boost_full()
+			Fx.text(fx_layer, ship.position + Vector2(0, -34), "加力槽已满", EG.C_AMBER, 20)
 
 # ---------------------------------------------------------------- fuel
 
@@ -1622,6 +2226,8 @@ func _cleanup() -> void:
 		if not met.dead and met.position.distance_to(ship.position) > limit + 1800.0:
 			remove_meteor(met, false)
 	for m in missiles.duplicate():
+		if m.chain != null and not is_instance_valid(m.chain):
+			m.chain = null
 		if not m.dead and m.position.distance_to(ship.position) > 6000.0:
 			remove_missile(m, false)
 	for d in drones.duplicate():
@@ -1681,6 +2287,9 @@ func _tutorial_step(delta: float) -> void:
 		[34.0, "贴近行星时辅助装置会自动绕行加速，离开引力圈后速度保留", EG.C_CYAN],
 		[42.0, "炮塔外壳会伤害你，但它也是导弹唯一能撞的东西", EG.C_VIOLET],
 		[50.0, "辅助操作装置会平衡恒星引力；导弹没有这套装置，始终被引力弯折", EG.C_CYAN],
+		[58.0, "偏导母舰正面有 120° 能量盾：绕到舰尾打 1.5 倍暴击", EG.C_AMBER],
+		[66.0, "引力阱舰虹吸时把脱锁弹或陨石送进吸引圈，它会把东西吸到脸上", EG.C_VIOLET],
+		[74.0, "商店黑市货架必出核心改装或技能觉醒，绕远路才有的东西", EG.C_MINT],
 	]
 	if Store.touch_mode:
 		texts = [
@@ -1691,6 +2300,9 @@ func _tutorial_step(delta: float) -> void:
 			[34.0, "贴近行星时辅助装置会自动绕行加速，离开引力圈后速度保留", EG.C_CYAN],
 			[42.0, "炮塔外壳会伤害你，但它也是导弹唯一能撞的东西", EG.C_VIOLET],
 			[50.0, "辅助操作装置会平衡恒星引力；导弹没有这套装置，始终被引力弯折", EG.C_CYAN],
+			[58.0, "偏导母舰正面有 120° 能量盾：绕到舰尾打 1.5 倍暴击", EG.C_AMBER],
+			[66.0, "引力阱舰虹吸时把脱锁弹或陨石送进吸引圈，它会把东西吸到脸上", EG.C_VIOLET],
+			[74.0, "商店黑市货架必出核心改装或技能觉醒，绕远路才有的东西", EG.C_MINT],
 		]
 	if tutorial_index < texts.size() and tutorial_timer >= float(texts[tutorial_index][0]):
 		if hud != null:

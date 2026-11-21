@@ -13,6 +13,10 @@ var shield_max := EG.SHIP_SHIELD_MAX
 var boost_meter := EG.SHIP_BOOST_MAX
 var boost_cap := EG.SHIP_BOOST_MAX
 var boost_mult := 1.0
+## 节能巡航：油耗倍率（升级可叠到 EG.ECO_CRUISE_MIN）。
+var fuel_cost_mult := 1.0
+## 战地整备：免费加力窗口内不消耗加力槽与燃料。
+var boost_free := false
 var boost_ready := true
 var thrusting := false
 var boosting := false
@@ -122,15 +126,16 @@ func step(delta: float, dir: Vector2, want_boost: bool) -> void:
 	if thrusting:
 		var spent := moved / maxf(accel, 0.001)    # seconds of full thrust
 		if boosting:
-			boost_meter = maxf(0.0, boost_meter - spent)
-			# 触底即耗尽（点火下限是 0.02，留残量会在阈值附近反复微点火）
-			if boost_meter <= 0.02:
-				boosting = false
-				boost_ready = false
-				boost_meter = 0.0
-			fuel = maxf(0.0, fuel - EG.SHIP_FUEL_BOOST * spent)
+			if not boost_free:
+				boost_meter = maxf(0.0, boost_meter - spent)
+				# 触底即耗尽（点火下限是 0.02，留残量会在阈值附近反复微点火）
+				if boost_meter <= 0.02:
+					boosting = false
+					boost_ready = false
+					boost_meter = 0.0
+				fuel = maxf(0.0, fuel - EG.SHIP_FUEL_BOOST * spent * fuel_cost_mult)
 		else:
-			fuel = maxf(0.0, fuel - EG.SHIP_FUEL_THRUST * spent)
+			fuel = maxf(0.0, fuel - EG.SHIP_FUEL_THRUST * spent * fuel_cost_mult)
 		facing = lerp_angle(facing, dir_n.angle(), 1.0 - pow(0.0004, delta))
 		thrust_level = lerpf(thrust_level, 1.0, 1.0 - pow(0.0006, delta))
 	else:

@@ -294,8 +294,86 @@ func _run_shots(dir: String) -> void:
 	await _wait_frames(2)
 	await _snap(dir, "04d_explosion")
 
+	# 1.3.0 新敌人：偏导母舰 + 二段加速弹（顺带展示 HUD 的改装芯片行）
+	run.paused = false
+	for m in run.missiles.duplicate():
+		m.remove()
+	run.missiles.clear()
+	for en in run.enemies.duplicate():
+		en.remove()
+	run.enemies.clear()
+	run.current_enemy = null
+	run.ship.position = Vector2(6000, 6000)
+	run.ship.vel = Vector2.ZERO
+	run.camera.position = run.ship.position
+	run.mods = {"relativist": 2, "proximity_charge": 1, "gravity_turbine": 1}
+	run.depth = 3
+	var aegis = run._make_attacker("aegis", false)
+	aegis.position = run.ship.position + Vector2(430, -300)
+	aegis.fire_timer = 99.0
+	run.world.add_child(aegis)
+	run.enemies.append(aegis)
+	run.current_enemy = aegis
+	aegis.reveal()
+	aegis.face_towards(run.ship.position)
+	var booster = run.spawn_enemy_missile(aegis, aegis.position + Vector2(-30, 300), 1.95, "booster")
+	booster.source = null
+	booster.seen = true
+	booster.locked = true
+	booster.lock_timer = 0.8
+	booster._age = 2.0
+	run.paused = true
+	await _wait_frames(4)
+	await _snap(dir, "04e_aegis")
+
+	# 双子中继站（一座已过热）+ 超载殉爆的水雷
+	run.paused = false
+	aegis.remove()
+	run.enemies.erase(aegis)
+	run.current_enemy = null
+	for m in run.missiles.duplicate():
+		m.remove()
+	run.missiles.clear()
+	run.depth = 5
+	var t1 = run._make_attacker("twin", false)
+	var t2 = run._make_attacker("twin", false)
+	var center: Vector2 = run.ship.position + Vector2(0, -250)
+	t1.position = center + Vector2(-375, 0)
+	t2.position = center + Vector2(375, 0)
+	t1.fire_timer = 99.0
+	t2.fire_timer = 99.0
+	t1.twin = t2
+	t2.twin = t1
+	t1.twin_leader = true
+	t1.pair_center = center
+	t2.pair_center = center
+	t2.overheated = true
+	t2.overheat_timer = 2.0
+	run.world.add_child(t1)
+	run.world.add_child(t2)
+	run.enemies.append(t1)
+	run.enemies.append(t2)
+	run.current_enemy = t1
+	t1.reveal()
+	t2.reveal()
+	t1.face_towards(run.ship.position)
+	t2.face_towards(run.ship.position)
+	for i in range(4):
+		var ang2: float = -0.9 + float(i) * 0.6
+		run.spawn_mine(t1, t1.position + Vector2.RIGHT.rotated(ang2) * 260.0, ang2, EG.VOLATILE_MINE_SPEED)
+	run.paused = true
+	await _wait_frames(4)
+	await _snap(dir, "04f_twin")
+
 	# safe zone
 	run.paused = false
+	for en in run.enemies.duplicate():
+		en.remove()
+	run.enemies.clear()
+	run.current_enemy = null
+	for m in run.missiles.duplicate():
+		m.remove()
+	run.missiles.clear()
 	var z = run.make_zone("safe", run.ship.position)
 	run.safe_zone = z
 	for m in run.missiles.duplicate():

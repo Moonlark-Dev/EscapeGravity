@@ -14,6 +14,8 @@ var speed := EG.DRONE_SPEED
 var vel := Vector2.ZERO
 var locked := true
 var lost := false
+## 木马协议：被脉冲反向骇入后，以 560 px/s 直撞主敌人并造成 15 伤害。
+var hacked := false
 var dead := false
 var _lock_elapsed := 0.0
 var _drift_t := 0.0
@@ -59,6 +61,11 @@ func step(delta: float) -> void:
 	if dead:
 		return
 
+	if hacked:
+		# 骇入后不再追踪玩家，也不再吃区域驱离：直线撞向锁定的敌人。
+		position += vel * delta
+		_visual()
+		return
 	if lost:
 		_drift_t += delta
 		if _drift_t >= EG.DRONE_DRIFT_LIFE:
@@ -142,9 +149,17 @@ func _zone_ward(delta: float) -> bool:
 func _visual() -> void:
 	rotation = vel.angle()
 	if _glow != null:
-		_glow.modulate.a = 0.12 if lost else 0.42 + 0.12 * sin(_t * 10.0)
+		if hacked:
+			_glow.modulate.a = 0.75
+		else:
+			_glow.modulate.a = 0.12 if lost else 0.42 + 0.12 * sin(_t * 10.0)
 	if _sprite != null:
-		_sprite.modulate = Color(0.62, 0.54, 0.78, 1.0) if lost else Color(1, 1, 1, 1)
+		if hacked:
+			_sprite.modulate = Color(1.0, 0.62, 0.85, 1.0)
+		elif lost:
+			_sprite.modulate = Color(0.62, 0.54, 0.78, 1.0)
+		else:
+			_sprite.modulate = Color(1, 1, 1, 1)
 
 func remove() -> void:
 	dead = true

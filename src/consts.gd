@@ -85,6 +85,146 @@ const NEST_SPEED_OUT := 200.0
 const NEST_SPEED_IN := 30.0
 const NEST_MAX_LOCKED := 4
 
+# ---- Aegis carrier (third non-small enemy) ----
+## 偏导母舰：正面 120° 弧形能量盾把导弹伤害衰减 80%（25 → 5）且不触发过热；
+## 舰尾是弱点，命中吃 1.5 倍暴击（37.5）并触发 4 秒长过热。转向极慢，
+## 玩家必须用引力弧线 / 脉冲切向 / 诱饵把它转过去的弹道再绕回来。
+const AEGIS_RADIUS := 360.0
+const AEGIS_HP := 70.0
+const AEGIS_FIRE_OUT := 5.0
+const AEGIS_FIRE_IN := 1.2
+const AEGIS_BURST := 2
+const AEGIS_OVERHEAT := 2.5
+const AEGIS_SPEED_OUT := 200.0
+const AEGIS_SPEED_IN := 16.0
+const AEGIS_TURN := 0.35             # rad/s，正面永远追不上高速绕后的弹道
+const AEGIS_HALF_ARC := 1.0472       # 120° 护盾 = ±60°（弧度）
+const AEGIS_FRONT_SCALE := 0.2       # 正面：25 → 5
+const AEGIS_CRIT_SCALE := 1.5        # 舰尾：25 → 37.5
+const AEGIS_CRIT_OVERHEAT := 4.0     # 舰尾暴击的长过热
+
+# ---- Singularity rig (control enemy) ----
+## 引力阱舰：平时斥力环把低速直射导弹推偏擦过，每 7 秒切 3.5 秒虹吸——
+## 同时拉扯玩家与全场导弹。解法是趁虹吸把脱锁导弹 / 陨石送进吸引圈。
+const RIG_RADIUS := 320.0
+const RIG_HP := 60.0
+const RIG_FIRE_OUT := 4.2
+const RIG_FIRE_IN := 1.6
+const RIG_BURST := 3
+const RIG_OVERHEAT := 3.0
+const RIG_SPEED_OUT := 150.0
+const RIG_SPEED_IN := 14.0
+const RIG_REPEL_TIME := 7.0          # 斥力态持续时间
+const RIG_SIPHON_TIME := 3.5         # 虹吸态持续时间
+const RIG_REPEL_RADIUS := 560.0
+const RIG_REPEL_PUSH := 420.0        # 低速导弹被推偏的位置速度（px/s）
+const RIG_REPEL_MAX_SPEED := 260.0   # 速度低于此值的导弹才会被斥力掰弯
+const RIG_SIPHON_RADIUS := 820.0
+const RIG_SIPHON_PULL := 620.0       # 导弹/陨石被吸向舰体的位置速度
+const RIG_SIPHON_SHIP := 260.0       # 对玩家的加速度
+const RIG_SIPHON_BURST := 3          # 虹吸结束时的一次齐射
+
+# ---- Twin pylons (paired encounter) ----
+## 双子中继站：成对刷新、保持约 750px 间距同步公转。一发导弹打中 A 时，
+## 若 B 不在过热态，3 秒后 A 开始缓慢回血——所以要么借 A 的导弹去炸 B
+## （锁定期只豁免发射者），要么两发连引同时打进双双过热。
+const PYLON_RADIUS := 210.0
+const PYLON_HP := 42.0
+const PYLON_FIRE_OUT := 3.4
+const PYLON_FIRE_IN := 1.6
+const PYLON_BURST := 2
+const PYLON_OVERHEAT := 2.6
+const PYLON_SPEED_OUT := 210.0
+const PYLON_SPEED_IN := 26.0
+const PYLON_GAP := 750.0             # 两站间距
+const PYLON_ORBIT := 0.42            # 公转角速度（rad/s）
+const PYLON_HEAL_DELAY := 3.0        # 受击后多久开始回血
+const PYLON_HEAL_TIME := 3.0         # 回血持续时间
+const PYLON_HEAL_RATE := 0.10        # 每秒恢复的最大生命比例
+
+# ---- New enemy ammo ----
+## 二段加速弹：前 1.8 秒 110 px/s 高转向校准，点火后 340 px/s、角速度暴跌。
+const BOOSTER_SLOW_SPEED := 110.0
+const BOOSTER_SLOW_TURN := 0.90
+const BOOSTER_IGNITE_TIME := 1.8
+const BOOSTER_FAST_SPEED := 340.0
+const BOOSTER_FAST_TURN := 0.12
+## 子母分裂弹：锁定倒计时结束时分裂成 3 枚扇形微型无锁弹头。
+const CLUSTER_FRAGS := 3
+const CLUSTER_FRAG_SPEED := 185.0
+const CLUSTER_FRAG_DMG := 12.0
+const CLUSTER_FRAG_SPREAD := 22.0    # 度，每枚之间的夹角
+const CLUSTER_FRAG_LIFE := 7.0
+## 超载殉爆/水雷弹：无锁慢速，能被脉冲反推回去炸自己。
+const MINE_SPEED := 90.0
+const MINE_DMG_ENEMY := 14.0
+const MINE_DMG_SHIP := 12.0
+const MINE_LIFE := 24.0
+const VOLATILE_MINES := 6
+const VOLATILE_MINE_SPEED := 120.0
+
+# ---- Elite affixes / depth scaling ----
+## 深层不再靠疯狂堆血：+22%/层 降到 +14%/层，改用精英词缀提供难度。
+const DEPTH_HP_GROWTH := 0.14
+const DEPTH_RATE_GROWTH := 0.035
+const ELITE_HP_MULT := 1.45
+const ELITE_DEPTH_START := 6         # 深度 6 起开始出现精英词缀
+const ELITE_EVERY := 4               # 之后每 4 层一个
+const POINT_DEFENSE_RADIUS := 30.0
+const POINT_DEFENSE_ORBIT := 1.7     # 护卫球环绕角速度
+const POINT_DEFENSE_MIN_SPEED := 280.0  # 高于此速度的导弹会凿穿拦截
+const POINT_DEFENSE_CD := 1.2        # 单颗护卫球的拦截间隔
+const PHASE_BLINK_DIST := 900.0      # 相位跃迁：过热结束时跳到玩家侧翼
+const PHASE_BLINK_ANGLE := 1.1       # 侧翼张角（弧度）
+
+# ---- Core mods (roguelike passive builds) ----
+const MOD_MAX_STACKS := 3
+# A 引力弹弓流
+const MOD_TURBINE_FUEL := 3.0        # 环绕行星每秒回燃料
+const MOD_TURBINE_BOOST := 0.25      # 环绕行星每秒回加力槽比例
+const MOD_RELATIVIST_BASE := 200.0   # 导弹速度阈值
+const MOD_RELATIVIST_STEP := 50.0    # 每超 50 px/s
+const MOD_RELATIVIST_DMG := 8.0      # 对敌伤害 +8
+const MOD_WAKE_SPEED := 350.0        # 曲率尾流触发速度
+const MOD_WAKE_ABSORB := 520.0       # 物质吸收半径翻倍
+# B 欺骗劫持流
+const MOD_PROXIMITY_RADIUS := 130.0  # 近炸增幅的擦弹距离
+const MOD_PROXIMITY_HEAL := 1.5
+const MOD_INERTIA_ANGLE := 0.2094    # 12° 辅助微偏转
+const MOD_CHAIN_RADIUS := 450.0      # 连锁殉爆半径
+# C 星体台球流
+const MOD_MASS_DRIVER_KNOCK := 320.0 # 脉冲对陨石的轰飞速度
+const MOD_METEOR_KNOCK_DAMAGE := 18.0
+const MOD_TROJAN_SPEED := 560.0
+const MOD_TROJAN_DMG := 15.0
+const MOD_BELT_INTERVAL := 0.5       # 陨石刷新间隔倍率
+# D 陷阱阵列流
+const MOD_RESONANCE_SPEED := 1.6     # 共振奇点内的导弹速度倍率
+const MOD_RESONANCE_RADIUS := 420.0
+const MOD_RESONANCE_FLING := 380.0   # 信标结束时甩向最近敌人的速度
+const MOD_RECYCLE_CD := 0.8
+const MOD_RECYCLE_FUEL := 3.0
+const MOD_READY_TIME := 3.0          # 战地整备：免费加力时长
+
+# ---- Upgrade rework ----
+const ECO_CRUISE_MULT := 0.88        # 节能巡航：推进/技能油耗 -12%
+const ECO_CRUISE_MIN := 0.50         # 最多叠到 5 折
+const FUEL_MAX_CARD_A := 40.0        # 燃料上限卡 +40
+const FUEL_MAX_CARD_B := 80.0        # 燃料上限卡 +80
+const SLOT_WEIGHT_FULL := 11.0       # 背包满时的物品栏扩建权重
+const SLOT_WEIGHT_OPEN := 6.0
+
+# ---- Skill awakenings (Lv4 branches) ----
+const PULSE_STASIS_RADIUS := 480.0
+const PULSE_STASIS_OVERHEAT := 1.5
+const DASH_AFTERIMAGE_LIFE := 3.0
+const BEACON_MIRROR_LIFE := 0.75     # 镜像双生：两枚信标各 75% 时长
+
+# ---- Shop shelves ----
+## 货架 1 补给位 1~2 代币 / 货架 2 战术道具 3~4 / 货架 3 黑市改装 5~7。
+const SHOP_SHELF_MIN := [1, 3, 5]
+const SHOP_SHELF_MAX := [2, 4, 7]
+
 # ---- Celestial bodies ----
 const BODY_RADIUS_MIN := 200.0
 const BODY_RADIUS_MAX := 380.0

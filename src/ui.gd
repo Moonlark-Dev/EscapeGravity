@@ -25,8 +25,12 @@ var _speed_label: Label
 var _depth_label: Label
 var _enemy_holder: Control
 var _enemy_bar: TextureProgressBar
+var _enemy_bar2: TextureProgressBar
 var _enemy_name: Label
 var _enemy_info: Label
+var _mods_row: Control
+var _mod_chips: Array = []
+var _mods_sig := ""
 var _safe_label: Label
 var _token_label: Label
 var _hint_label: Label
@@ -188,6 +192,12 @@ func _build_bars() -> void:
 	_depth_label.size = Vector2(240, 20)
 	holder.add_child(_depth_label)
 
+	# 核心改装芯片：按流派图标 + 层数排成一行，叠满一层就多一个 ×N。
+	_mods_row = Control.new()
+	_mods_row.position = Vector2(0, 118)
+	_mods_row.size = Vector2(320, 22)
+	holder.add_child(_mods_row)
+
 func _build_pause_button() -> void:
 	_pause_btn = Assets.button("Ⅱ", 20)
 	_pause_btn.custom_minimum_size = Vector2(52, 46)
@@ -222,6 +232,15 @@ func _build_enemy_bar() -> void:
 	_enemy_bar.max_value = 50
 	_enemy_bar.value = 50
 	_enemy_holder.add_child(_enemy_bar)
+	# 双子中继站的主/副双段血条：主条上方是当前目标，副条是其联动站。
+	_enemy_bar2 = Assets.progress_bar("bar_fill_hp")
+	_enemy_bar2.position = Vector2(70, 45)
+	_enemy_bar2.size = Vector2(290, 9)
+	_enemy_bar2.max_value = 42
+	_enemy_bar2.value = 42
+	_enemy_bar2.modulate = Color(1.0, 0.72, 0.45)
+	_enemy_bar2.visible = false
+	_enemy_holder.add_child(_enemy_bar2)
 	_enemy_info = Assets.label("", 12, EG.C_DIM)
 	_enemy_info.position = Vector2(0, 0)
 	_enemy_info.size = Vector2(430, 20)
@@ -620,6 +639,7 @@ func refresh() -> void:
 	_speed_label.add_theme_color_override("font_color", speed_col)
 	_depth_label.text = "深度 %d · 击杀 %d" % [run.depth, run.kills]
 	_token_label.text = str(run.tokens)
+	_refresh_mods()
 	_refresh_enemy()
 	_refresh_inventory()
 	_refresh_skills()
@@ -653,11 +673,15 @@ func _refresh_enemy() -> void:
 	_enemy_holder.visible = true
 	_enemy_bar.max_value = e.max_hp
 	_enemy_bar.value = maxf(0.0, e.hp)
-	var label: String = "导弹巢" if e.kind == "nest" else "炮塔"
-	if e.elite:
-		label += " · 精英"
-	_enemy_name.text = label
+	_enemy_name.text = e.display_name()
 	_enemy_name.add_theme_color_override("font_color", EG.C_MAGENTA if e.elite else EG.C_TEXT)
+	var partner = e.twin
+	if partner != null and is_instance_valid(partner) and not partner.dead and partner.discovered:
+		_enemy_bar2.visible = true
+		_enemy_bar2.max_value = partner.max_hp
+		_enemy_bar2.value = maxf(0.0, partner.hp)
+	else:
+		_enemy_bar2.visible = false
 	var dist: float = e.position.distance_to(run.ship.position)
 	if not e.in_view:
 		_enemy_info.text = "%d m" % roundi(dist / 10.0)
@@ -667,6 +691,40 @@ func _refresh_enemy() -> void:
 			_enemy_info.add_theme_color_override("font_color", EG.C_CYAN)
 		else:
 			_enemy_info.add_theme_color_override("font_color", EG.C_AMBER)
+
+func _refresh_mods() -> void:
+	if _mods_row == null:
+		return
+	var sig := str(run.mods)
+	if sig == _mods_sig:
+		return
+	_mods_sig = sig
+	for c in _mod_chips:
+		if is_instance_valid(c):
+			c.queue_free()
+	_mod_chips.clear()
+	var x := 0.0
+	for id in Defs.MOD_ORDER:
+		var n: int = int(run.mods.get(id, 0))
+		if n <= 0:
+			continue
+		var chip := Control.new()
+		chip.position = Vector2(x, 0)
+		chip.size = Vector2(22, 22)
+		_mods_row.add_child(chip)
+		var school: Dictionary = Defs.MOD_SCHOOLS[Defs.MODS[id]["school"]]
+		var ic := Assets.icon(str(school["icon"]))
+		ic.position = Vector2(0, 0)
+		ic.size = Vector2(20, 20)
+		ic.modulate = school["color"]
+		chip.add_child(ic)
+		if n > 1:
+			var l := Assets.label("×%d" % n, 10, EG.C_TEXT, 2)
+			l.position = Vector2(10, 8)
+			l.size = Vector2(18, 14)
+			chip.add_child(l)
+		_mod_chips.append(chip)
+		x += 24.0
 
 func _refresh_inventory() -> void:
 	var sig := str(run.inventory) + "|" + str(run.item_slots) + "|" + str(run.selected_item)
@@ -1008,6 +1066,13 @@ func _process(_delta: float) -> void:
 		if Input.is_action_just_pressed("use_item") or Input.is_action_just_pressed("pause"):
 			run.close_shop()
 		return
+	if run.state == Run.State.REPLACE_SKILL:
+		for i in range(EG.SKILL_SLOTS):
+			if Input.is_action_just_pressed("card_%d" % (i + 1)):
+				run.choose_skill_replace(i)
+		if Input.is_action_just_pressed("pause"):
+			run.cancel_skill_replace()
+		return
 	if run.state == Run.State.DESTROY:
 		for i in range(EG.ITEM_SLOTS_MAX):
 			if Input.is_action_just_pressed("card_%d" % (i + 1)):
@@ -1229,41 +1294,103 @@ func _make_shop_row(offer: Dictionary, idx: int, panel_w: float) -> Control:
 	bg.modulate = Color(1, 1, 1, 0.45)
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	row.add_child(bg)
-	var id: String = offer["item"]
-	var it: Dictionary = Defs.ITEMS[id]
+	var title: String = str(offer.get("title", ""))
+	var desc_text: String = str(offer.get("desc", ""))
+	var rarity: String = str(offer.get("rarity", "common"))
+	var icon: String = str(offer.get("icon", "icon_inventory"))
+	var rc := Defs.rarity_color(rarity)
 	var ic := TextureRect.new()
-	ic.texture = Assets.ui("icon_item_" + id)
+	ic.texture = Assets.ui(icon)
 	ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	ic.position = Vector2(14, 14)
 	ic.size = Vector2(68, 68)
 	row.add_child(ic)
-	var name_l := Assets.label(it["name"], 20, Defs.item_rarity_color(id))
-	name_l.position = Vector2(98, 12)
-	name_l.size = Vector2(460, 26)
+	var shelf := str(offer.get("shelf", ""))
+	var name_l := Assets.label(("%s · %s" % [shelf, title]) if shelf != "" else title, 20, rc)
+	name_l.position = Vector2(98, 10)
+	name_l.size = Vector2(520, 26)
 	row.add_child(name_l)
-	var desc := Assets.label(it["desc"], 13, EG.C_DIM)
-	desc.position = Vector2(98, 42)
-	desc.size = Vector2(560, 46)
+	var desc := Assets.label(desc_text, 13, EG.C_DIM)
+	desc.position = Vector2(98, 40)
+	desc.size = Vector2(560, 50)
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	row.add_child(desc)
 	var price_l := Assets.label("", 18, EG.C_AMBER)
 	price_l.position = Vector2(panel_w - 430, 30)
 	price_l.size = Vector2(120, 30)
 	price_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	price_l.text = ("%d 代币" % int(offer["price"])) if not offer["sold"] else "已售出"
+	price_l.text = ("%d 代币" % int(offer["price"])) if not bool(offer["sold"]) else "已售出"
 	row.add_child(price_l)
 	var buy := Assets.button("购买", 16)
 	buy.position = Vector2(panel_w - 230, 24)
 	buy.size = Vector2(150, 46)
 	buy.custom_minimum_size = Vector2(150, 46)
-	buy.disabled = offer["sold"] or run.tokens < int(offer["price"])
+	buy.disabled = bool(offer["sold"]) or run.tokens < int(offer["price"])
 	buy.pressed.connect(func(): run.buy_offer(idx))
 	row.add_child(buy)
 	return row
 
 func refresh_shop(stock: Array, tokens_now: int) -> void:
 	show_shop(stock, tokens_now)
+
+func show_skill_replace(skills_now: Array, new_id: String) -> void:
+	overlay.visible = true
+	_set_overlay_mode(true)
+	_clear_overlay()
+	_dim_background()
+	var panel := _center_panel(920.0, 460.0)
+	_title(panel, "技能槽已满 · 选择要替换的技能", 24, 30, EG.C_AMBER)
+	var new_data: Dictionary = Defs.SKILLS[new_id]
+	var sub := Assets.label("新技能：%s · %s" % [new_data["name"], new_data["desc"]], 15, EG.C_DIM)
+	sub.position = Vector2(30, 68)
+	sub.size = Vector2(panel.size.x - 60, 44)
+	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	panel.add_child(sub)
+	for i in range(skills_now.size()):
+		var data: Dictionary = Defs.SKILLS[skills_now[i]["id"]]
+		var lv := int(skills_now[i]["level"])
+		var card := Control.new()
+		card.position = Vector2(56 + i * 300, 138)
+		card.size = Vector2(264, 210)
+		var bg := Assets.panel("card_9p")
+		bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		card.add_child(bg)
+		var ic := TextureRect.new()
+		ic.texture = Assets.ui("icon_skill_" + str(data["icon"]).replace("skill_", ""))
+		ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		ic.position = Vector2(92, 20)
+		ic.size = Vector2(80, 80)
+		card.add_child(ic)
+		var nm := Assets.label(str(data["name"]), 22, data["color"], 3)
+		nm.position = Vector2(0, 108)
+		nm.size = Vector2(264, 28)
+		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		card.add_child(nm)
+		var lv_l := Assets.label("当前 Lv%d · 替换后继承 Lv%d" % [lv, maxi(1, int(floor(float(lv) * 0.5)))], 13, EG.C_DIM)
+		lv_l.position = Vector2(0, 138)
+		lv_l.size = Vector2(264, 20)
+		lv_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		card.add_child(lv_l)
+		var b := Assets.button("替换 [%d]" % (i + 1), 16)
+		b.position = Vector2(52, 164)
+		b.size = Vector2(160, 38)
+		b.custom_minimum_size = Vector2(160, 38)
+		b.pressed.connect(func(): run.choose_skill_replace(i))
+		card.add_child(b)
+		panel.add_child(card)
+	var cancel := Assets.button("保留原技能", 18)
+	cancel.position = Vector2(panel.size.x * 0.5 - 120, panel.size.y - 78)
+	cancel.size = Vector2(240, 50)
+	cancel.pressed.connect(func(): run.cancel_skill_replace())
+	panel.add_child(cancel)
+
+func hide_skill_replace() -> void:
+	overlay.visible = false
+	_set_overlay_mode(false)
+	_clear_overlay()
 
 func hide_shop() -> void:
 	overlay.visible = false
