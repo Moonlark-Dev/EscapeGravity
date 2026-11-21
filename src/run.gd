@@ -2,7 +2,7 @@ class_name Run
 extends Node2D
 ## One run of Escape Gravity. Owns the world, the state machine and the rules.
 
-enum State { PLAYING, LEVELUP, SHOP, DESTROY, DEAD, REPLACE_SKILL }
+enum State { PLAYING, LEVELUP, SHOP, DESTROY, DEAD, REPLACE_SKILL, AWAKEN_CHOICE }
 
 var main
 var hud
@@ -59,6 +59,8 @@ var eco_cruise := 1.0
 ## 战地整备：消耗品生效后的免费加力窗口。
 var free_boost_timer := 0.0
 var _pending_skill := ""
+var _pending_awaken_skill := ""
+var _pending_awaken: Array = []
 
 var player_hidden := false
 var fuel_dead_timer := 0.0
@@ -1822,6 +1824,17 @@ func choose_upgrade(index: int) -> void:
 	if state != State.LEVELUP or index < 0 or index >= upgrade_cards.size():
 		return
 	var card: Dictionary = upgrade_cards[index]
+	# 双分支觉醒（脉冲 A/B）先弹“二选一”，选定后再落地。
+	if card["id"] == "skill_awaken" and card.get("branches", []).size() > 1:
+		_pending_awaken_skill = str(card["skill_id"])
+		_pending_awaken = (card["branches"] as Array).duplicate()
+		upgrade_cards = []
+		pending_levels = maxi(0, pending_levels - 1)
+		state = State.AWAKEN_CHOICE
+		if hud != null:
+			hud.hide_levelup()
+			hud.show_awaken_choice(_pending_awaken_skill, _pending_awaken)
+		return
 	# 技能槽满时也能选新技能：先进入“双槽对比替换”流程，替换后继承一半等级。
 	if card["id"] == "skill_new" and bool(card.get("replace", false)):
 		_pending_skill = str(card["skill_id"])
@@ -1862,6 +1875,30 @@ func choose_skill_replace(index: int) -> void:
 	state = State.PLAYING
 	_resume_play()
 	Audio.play("sfx_upgrade", -8.0)
+
+func choose_awaken(branch: String) -> void:
+	if state != State.AWAKEN_CHOICE:
+		return
+	var sid := _pending_awaken_skill
+	_pending_awaken_skill = ""
+	_pending_awaken = []
+	if hud != null:
+		hud.hide_awaken_choice()
+	_apply_awaken(sid, branch)
+	state = State.PLAYING
+	_resume_play()
+
+## 放弃觉醒选择同样退还这次升级。
+func cancel_awaken_choice() -> void:
+	if state != State.AWAKEN_CHOICE:
+		return
+	_pending_awaken_skill = ""
+	_pending_awaken = []
+	pending_levels += 1
+	if hud != null:
+		hud.hide_awaken_choice()
+	state = State.PLAYING
+	_resume_play()
 
 ## 取消替换不该白丢一次升级：把这次等级还回去并重新开一轮（等于重摇）。
 func cancel_skill_replace() -> void:

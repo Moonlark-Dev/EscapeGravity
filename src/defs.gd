@@ -219,6 +219,14 @@ static func item_rarity_color(id: String) -> Color:
 	var it = ITEMS.get(id, {})
 	return rarity_color(it.get("rarity", "common"))
 
+## 某个技能可选的超载觉醒分支（按 AWAKEN_ORDER 顺序）。
+static func awaken_branches(skill_id: String) -> Array:
+	var out: Array = []
+	for aid in AWAKEN_ORDER:
+		if str(AWAKENINGS[aid]["skill"]) == skill_id:
+			out.append(aid)
+	return out
+
 static func mod_school_color(mod_id: String) -> Color:
 	var m: Dictionary = MODS.get(mod_id, {})
 	return MOD_SCHOOLS.get(m.get("school", "gravity"), MOD_SCHOOLS["gravity"])["color"]
@@ -311,12 +319,24 @@ static func roll_upgrades(run, rng: RandomNumberGenerator) -> Array:
 		elif chosen == "skill_awaken":
 			var pick: Array = run.awakenable_skills()
 			var entry: Dictionary = pick[rng.randi_range(0, pick.size() - 1)]
-			card["skill_id"] = entry["skill"]
+			var sid3: String = entry["skill"]
+			var branches: Array = awaken_branches(sid3)
+			card["skill_id"] = sid3
 			card["awaken"] = entry["awaken"]
-			card["title"] = "觉醒：" + str(AWAKENINGS[entry["awaken"]]["name"])
-			card["desc"] = AWAKENINGS[entry["awaken"]]["desc"]
-			card["rarity"] = AWAKENINGS[entry["awaken"]]["rarity"]
 			card["icon"] = "icon_awaken"
+			if branches.size() > 1:
+				# 有两条分支的技能（脉冲）先给一张通用卡，选中后再弹“二选一”。
+				var names := PackedStringArray()
+				for bid in branches:
+					names.append("「%s」" % str(AWAKENINGS[bid]["name"]))
+				card["branches"] = branches
+				card["title"] = "超载觉醒：" + SKILLS[sid3]["name"]
+				card["desc"] = "二选一：" + String(" / ").join(names) + "（选中后再挑分支）"
+				card["rarity"] = "legend"
+			else:
+				card["title"] = "觉醒：" + str(AWAKENINGS[entry["awaken"]]["name"])
+				card["desc"] = AWAKENINGS[entry["awaken"]]["desc"]
+				card["rarity"] = AWAKENINGS[entry["awaken"]]["rarity"]
 		picked.append(card)
 	return picked
 

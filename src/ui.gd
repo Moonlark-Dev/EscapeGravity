@@ -1066,6 +1066,17 @@ func _process(_delta: float) -> void:
 		if Input.is_action_just_pressed("use_item") or Input.is_action_just_pressed("pause"):
 			run.close_shop()
 		return
+	if run.state == Run.State.AWAKEN_CHOICE:
+		for i in range(2):
+			if Input.is_action_just_pressed("card_%d" % (i + 1)):
+				var branch: String = ""
+				if i < run._pending_awaken.size():
+					branch = str(run._pending_awaken[i])
+				if branch != "":
+					run.choose_awaken(branch)
+		if Input.is_action_just_pressed("pause"):
+			run.cancel_awaken_choice()
+		return
 	if run.state == Run.State.REPLACE_SKILL:
 		for i in range(EG.SKILL_SLOTS):
 			if Input.is_action_just_pressed("card_%d" % (i + 1)):
@@ -1386,6 +1397,73 @@ func show_skill_replace(skills_now: Array, new_id: String) -> void:
 	cancel.size = Vector2(240, 50)
 	cancel.pressed.connect(func(): run.cancel_skill_replace())
 	panel.add_child(cancel)
+
+## 双分支技能的“超载觉醒”二选一面板（脉冲 A/B）。
+func show_awaken_choice(skill_id: String, branches: Array) -> void:
+	overlay.visible = true
+	_set_overlay_mode(true)
+	_clear_overlay()
+	_dim_background()
+	var panel := _center_panel(940.0, 480.0)
+	var skill: Dictionary = Defs.SKILLS[skill_id]
+	_title(panel, "超载觉醒 · %s 二选一" % str(skill["name"]), 24, 30, EG.C_AMBER)
+	var sub := Assets.label("选一条分支固化到 Lv4；另一条本局不会再出现。", 14, EG.C_DIM)
+	sub.position = Vector2(0, 66)
+	sub.size = Vector2(panel.size.x, 20)
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	panel.add_child(sub)
+	for i in range(branches.size()):
+		var bid := str(branches[i])
+		var data: Dictionary = Defs.AWAKENINGS[bid]
+		var rc := Defs.rarity_color(str(data["rarity"]))
+		var card := Control.new()
+		card.position = Vector2(66 + i * 420, 108)
+		card.size = Vector2(388, 300)
+		var bg := Assets.panel("card_9p")
+		bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		card.add_child(bg)
+		var top := TextureRect.new()
+		top.texture = Assets.ui("divider")
+		top.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		top.position = Vector2(28, 24)
+		top.size = Vector2(332, 4)
+		top.modulate = rc
+		card.add_child(top)
+		var ic := TextureRect.new()
+		ic.texture = Assets.ui("icon_awaken")
+		ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		ic.position = Vector2(146, 40)
+		ic.size = Vector2(96, 96)
+		card.add_child(ic)
+		var nm := Assets.label(str(data["name"]), 22, rc, 3)
+		nm.position = Vector2(0, 148)
+		nm.size = Vector2(388, 28)
+		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		card.add_child(nm)
+		var desc := Assets.label(str(data["desc"]), 14, EG.C_DIM)
+		desc.position = Vector2(24, 184)
+		desc.size = Vector2(340, 62)
+		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		card.add_child(desc)
+		var b := Assets.button("选择 [%d]" % (i + 1), 16)
+		b.position = Vector2(114, 250)
+		b.size = Vector2(160, 38)
+		b.custom_minimum_size = Vector2(160, 38)
+		b.pressed.connect(func(): run.choose_awaken(bid))
+		card.add_child(b)
+		panel.add_child(card)
+	var cancel := Assets.button("放弃（退还升级）", 16)
+	cancel.position = Vector2(panel.size.x * 0.5 - 130, panel.size.y - 56)
+	cancel.size = Vector2(260, 38)
+	cancel.pressed.connect(func(): run.cancel_awaken_choice())
+	panel.add_child(cancel)
+
+func hide_awaken_choice() -> void:
+	overlay.visible = false
+	_set_overlay_mode(false)
+	_clear_overlay()
 
 func hide_skill_replace() -> void:
 	overlay.visible = false

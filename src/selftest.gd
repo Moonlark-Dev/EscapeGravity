@@ -1762,6 +1762,26 @@ func _test_awakenings() -> void:
 		r4.skills[1]["id"] == "dash" and int(r4.skills[1]["level"]) == 1
 		and r4.state == Run.State.PLAYING)
 
+	# 双分支觉醒：脉冲 A/B 先弹“二选一”，选定后固化到 Lv4。
+	var r6 := _new_run(172)
+	_clear_arena(r6)
+	r6.skills = [{"id": "pulse", "level": 3, "cd": 0.0}]
+	r6.state = Run.State.LEVELUP
+	r6.pending_levels = 1
+	r6.upgrade_cards = [{"id": "skill_awaken", "skill_id": "pulse",
+		"branches": ["pulse_fan", "pulse_stasis"], "awaken": "pulse_fan",
+		"title": "超载觉醒：脉冲", "desc": "二选一", "rarity": "legend", "icon": "icon_awaken"}]
+	r6.choose_upgrade(0)
+	_check("脉冲觉醒进入二选一面板",
+		r6.state == Run.State.AWAKEN_CHOICE and r6._pending_awaken.size() == 2,
+		"state=%d branches=%d" % [r6.state, r6._pending_awaken.size()])
+	r6.choose_awaken("pulse_stasis")
+	_check("选定分支后固化为 Lv4 并记录",
+		r6.skill_awaken("pulse") == "pulse_stasis" and int(r6.skills[0]["level"]) == 4
+		and r6.state == Run.State.PLAYING)
+	_check("Defs 能列出脉冲的两条觉醒分支",
+		Defs.awaken_branches("pulse").size() == 2 and Defs.awaken_branches("dash").size() == 1)
+
 	# 取消替换不该白丢一次升级：把等级还回去并重新开一轮。
 	var r5 := _new_run(171)
 	_clear_arena(r5)
