@@ -2316,8 +2316,9 @@ func _tutorial_step(delta: float) -> void:
 	if Store.hints_done or tutorial_index > 6:
 		return
 	tutorial_timer += delta
+	var intro_key := "左摇杆 推进 · RB 加力 · Y 脉冲" if Controls.using_pad() else "WASD 推进 · Shift 加力 · J 脉冲"
 	var texts := [
-		[2.0, "WASD / 左摇杆 推进 · Shift 加力 · J 脉冲", EG.C_CYAN],
+		[2.0, intro_key, EG.C_CYAN],
 		[10.0, "导弹锁你 5 秒后脱锁：把它的弹道引向炮塔", EG.C_AMBER],
 		[18.0, "护盾只有 20，敌方导弹一击必杀", EG.C_MAGENTA],
 		[26.0, "松开推进不会减速；燃料只在实际加速、减速或转向时消耗", EG.C_MINT],

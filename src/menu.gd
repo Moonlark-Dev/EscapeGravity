@@ -12,7 +12,13 @@ var _particles: Array = []
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	Controls.device_changed.connect(_on_device_changed)
 	build("title")
+
+## 设备切换时按当前设备重画菜单：用手柄时只显示手柄键位，反之亦然。
+func _on_device_changed(_pad: bool) -> void:
+	if visible:
+		build(mode)
 
 func build(new_mode: String) -> void:
 	mode = new_mode
@@ -132,7 +138,7 @@ func _build_title() -> void:
 	ver.offset_bottom = -22
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_content.add_child(ver)
-	var hint := _label("Enter / 空格 开始", 13, Color(0.55, 0.7, 0.85, 0.7))
+	var hint := _label("A 开始" if Controls.using_pad() else "Enter / 空格 开始", 13, Color(0.55, 0.7, 0.85, 0.7))
 	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	hint.anchor_left = 0.5
 	hint.anchor_right = 0.5
@@ -160,7 +166,7 @@ func _build_pause() -> void:
 		b.pressed.connect(func(): _pause_action(act))
 		panel.add_child(b)
 		y += 64
-	var tip := _label("Esc 继续", 13, EG.C_DIM)
+	var tip := _label(("%s 继续" % Controls.hint("pause")), 13, EG.C_DIM)
 	tip.position = Vector2(130, 322)
 	tip.size = Vector2(240, 20)
 	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -316,19 +322,25 @@ func _build_howto() -> void:
 		p.add_child(h)
 		var b := _label(sec[1], 14, EG.C_DIM)
 		b.position = Vector2(left_x, y + 30)
-		b.size = Vector2(560, 70)
+		# autowrap 必须在 size 之前设：先设 size 会按整行宽度把 Label 撑开，
+		# 之后再开自动换行也不会缩回去（长说明被裁掉的老问题）。
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		b.size = Vector2(560, 70)
 		p.add_child(b)
 		y += 118
-	var controls := _label("操作\nWASD / 方向键 / 左摇杆：推进（松开后保持惯性）\nShift / LS：加力（3 倍推力，1.2× 燃料）\nJ / K（Y / B）：技能 1 / 2\nQ / E：切换物品　F / X：使用物品\n1-3：升级 / 商店选择　Esc：暂停", 14, EG.C_TEXT)
+	# 只显示当前设备的键位：手柄玩家不需要在提示里读 WASD/Shift。
+	var controls_text := "操作\nWASD / 方向键：推进（松开后保持惯性）\nShift：加力（3 倍推力，1.2× 燃料）\nJ / K：技能 1 / 2\nQ / E：切换物品　F：使用物品\n1-3：升级 / 商店选择　Esc：暂停"
+	if Controls.using_pad():
+		controls_text = "操作\n左摇杆：推进（松开后保持惯性）\nRB：加力（3 倍推力，1.2× 燃料）\nY / B：技能 1 / 2\n← / →：切换物品　X：使用物品\n方向键：升级 / 商店选择　Start：暂停"
+	var controls := _label(controls_text, 14, EG.C_TEXT)
 	controls.position = Vector2(640, top)
 	controls.size = Vector2(390, 190)
 	controls.add_theme_constant_override("line_spacing", 4)
 	p.add_child(controls)
-	var rules := _label("生存规则\n护盾 20，敌方导弹伤害 25：挨一发就结束。\n陨石只磨损 0.5，被你撞飞的陨石能对攻击者造成 5 伤害。\n燃料 500；只有实际加速/减速/转向耗油，滑行免费。\n安全区：补满燃料、清除导弹、隐藏威胁信息。\n商店三货架：补给 / 战术道具 / 黑市改装（必出改装或觉醒）。\n深层：偏导母舰绕后暴击、引力阱舰虹吸时送弹、双子一起打进过热。\n贴近行星会自动绕行加速；导弹没有辅助装置，始终被引力弯折。", 14, EG.C_DIM)
+	var rules := _label("生存规则\n护盾 20，敌方导弹伤害 25：挨一发就结束。\n陨石只磨损 0.5，被你撞飞的陨石能对攻击者造成 5 伤害。\n燃料 100；只有实际加速/减速/转向耗油，滑行免费。\n安全区：补满燃料、清除导弹、隐藏威胁信息。\n商店三货架：补给 / 战术道具 / 黑市改装（必出改装或觉醒）。\n深层：偏导母舰绕后暴击、引力阱舰虹吸时送弹、双子一起打进过热。\n贴近行星会自动绕行加速；导弹没有辅助装置，始终被引力弯折。", 14, EG.C_DIM)
 	rules.position = Vector2(640, top + 205)
-	rules.size = Vector2(390, 190)
 	rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rules.size = Vector2(390, 190)
 	p.add_child(rules)
 	var ship_icon := TextureRect.new()
 	ship_icon.texture = Assets.world("ship")

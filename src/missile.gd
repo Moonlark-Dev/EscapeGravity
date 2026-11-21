@@ -137,7 +137,6 @@ func step(delta: float) -> void:
 
 	_update_booster()
 
-	var enemy = run.current_enemy if run != null else null
 	if not seen and run != null and run.is_on_screen(position):
 		seen = true
 	if locked and seen:
@@ -156,11 +155,11 @@ func step(delta: float) -> void:
 		var tpos: Vector2 = run.target_position(self)
 		var desired := (tpos - position).angle()
 		var diff := wrapf(desired - cur, -PI, PI)
-		if enemy != null and position.distance_to(enemy.position) < enemy.radius + 34.0:
-			var to_enemy: Vector2 = (enemy.position - position).normalized()
-			var fwd := Vector2.RIGHT.rotated(cur)
-			if fwd.dot(to_enemy) > 0.1:
-				diff += 1.2 * signf(fwd.cross(to_enemy))
+		# 锁定期把敌人外壳当障碍：绕飞优先于直线追踪，否则玩家绕圈时
+		# 导弹会从敌人正中间穿过去（以前只有出生点的短暂偏转，且方向算反）。
+		var avoid := _avoidance_steer(cur)
+		if avoid != 0.0:
+			diff = avoid
 		var max_step := turn_rate() * delta
 		var steer := clampf(diff, -max_step, max_step)
 		if pull.length() > 1.0:
@@ -182,6 +181,8 @@ func step(delta: float) -> void:
 			angle = vel.angle()
 
 	position += vel * delta
+	if locked:
+		_resolve_hull_penetration()
 	rotation = angle
 	_trail.emitting = locked or kind == "mine"
 	_glow.modulate.a = (0.45 + 0.15 * sin(_t * 12.0)) if locked else 0.15
@@ -190,6 +191,68 @@ func step(delta: float) -> void:
 		_warn.modulate.a = (0.30 + 0.18 * sin(_t * 9.0)) if locked and seen else 0.0
 		_warn.rotation = -angle + _t * 0.6
 	_sprite.modulate = _base_mod if locked else _base_mod.darkened(0.18)
+
+## 锁定中的导弹把每艘敌舰的外壳当成实体障碍：如果当前航向在绕飞提前量内
+## 会擦进外壳，就改朝“绕外壳的切线”转向，返回相对当前航向的转向量；
+## 没有威胁时返回 0，交回正常的追踪逻辑。
+func _avoidance_steer(cur: float) -> float:
+	if run == null or run.enemies.is_empty():
+		return 0.0
+	var fwd := Vector2.RIGHT.rotated(cur)
+	var best := 0.0
+	var best_urgency := 0.0
+	for e in run.enemies:
+		if e == null or not is_instance_valid(e) or e.dead:
+			continue
+		var rel: Vector2 = position - e.position
+		var dist := rel.length()
+		var hull: float = e.radius + EG.MISSILE_RADIUS
+		if dist > hull + EG.MISSILE_AVOID_LOOKAHEAD:
+			continue
+		var to_e := -rel
+		# 贴着外壳或已经进入外壳时强制修正；离得还远则只在航向真的
+		# 会擦进外壳时才绕飞，不从敌人旁边经过时也乱绕。
+		if dist > hull:
+			if fwd.dot(to_e) <= 0.0:
+				continue
+			var perp := absf(fwd.cross(to_e))
+			if perp > hull + EG.MISSILE_AVOID_MARGIN:
+				continue
+		var tangent := rel.orthogonal()
+		if tangent.dot(fwd) < 0.0:
+			tangent = -tangent
+		var off := wrapf(tangent.angle() - cur, -PI, PI)
+		var urgency := 1.0 - clampf((dist - hull) / maxf(EG.MISSILE_AVOID_LOOKAHEAD, 1.0), 0.0, 1.0)
+		if urgency > best_urgency:
+			best_urgency = urgency
+			best = off
+	return best
+
+## 硬约束：锁定期弹体不能进入敌舰外壳。真的贴上就把位置推回表面，并把
+## 撞向舰体的速度分量改成沿切线的滑行速度——表现为贴着外壳绕飞。
+func _resolve_hull_penetration() -> void:
+	if run == null:
+		return
+	for e in run.enemies:
+		if e == null or not is_instance_valid(e) or e.dead:
+			continue
+		var rel: Vector2 = position - e.position
+		var dist := rel.length()
+		var min_d: float = e.radius + EG.MISSILE_RADIUS - EG.MISSILE_AVOID_INSET
+		if dist >= min_d:
+			continue
+		var n: Vector2 = rel / dist if dist > 0.001 else Vector2.RIGHT.rotated(vel.angle() + PI)
+		position = e.position + n * min_d
+		var inward: float = -vel.dot(n)
+		if inward > 0.0:
+			vel += n * inward
+		if vel.length() < 1.0:
+			var slide: Vector2 = n.orthogonal()
+			if slide.dot(vel) < 0.0:
+				slide = -slide
+			vel = slide
+		vel = vel.normalized() * speed
+		angle = vel.angle()
 
 ## 二段加速弹：前 1.8 秒低速高转向校准，之后点火飙到 340 px/s 但角速度暴跌。
 func _update_booster() -> void:

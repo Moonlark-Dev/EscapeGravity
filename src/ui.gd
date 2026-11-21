@@ -72,6 +72,9 @@ var _cards_root: VBoxContainer
 var _radar_emph := 0.0
 var _safe_tint: TextureRect
 var _info_hidden := false
+## 当前提示用的是哪套键位（"kb" / "pad"）：只有设备真的换了才重写文案。
+var _hint_device := ""
+var _last_summary: Dictionary = {}
 
 func bind(r) -> void:
 	run = r
@@ -102,6 +105,8 @@ func _build() -> void:
 	_build_markers()
 	_build_toasts()
 	_build_overlay()
+	if not Controls.device_changed.is_connected(_on_device_changed):
+		Controls.device_changed.connect(_on_device_changed)
 
 	_hint_label = Assets.label("", 13, EG.C_DIM)
 	_hint_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
@@ -744,7 +749,11 @@ func _refresh_inventory() -> void:
 		slot["root"].modulate = Color(1, 1, 1, 1.0 if active else 0.35)
 	if run.inventory.size() > 0 and run.selected_item < run.inventory.size():
 		var id2: String = run.inventory[run.selected_item]
-		_item_hint.text = "%s  [%s]" % [Defs.ITEMS[id2]["name"], "使用" if Store.touch_mode else "F"]
+		if Store.touch_mode:
+			_item_hint.text = "%s  使用" % Defs.ITEMS[id2]["name"]
+		else:
+			_item_hint.text = "%s  [%s] · %s/%s 切换" % [Defs.ITEMS[id2]["name"],
+				Controls.hint("use_item"), Controls.hint("item_prev"), Controls.hint("item_next")]
 	else:
 		_item_hint.text = ""
 
@@ -760,6 +769,7 @@ func _refresh_skills() -> void:
 			slot["icon"].texture = Assets.ui("icon_skill_" + str(Defs.SKILLS[s["id"]]["icon"]).replace("skill_", ""))
 			slot["icon"].modulate = Color(1, 1, 1, 1.0 if float(s["cd"]) <= 0.0 else 0.55)
 			slot["key"].visible = not Store.touch_mode
+			slot["key"].text = Controls.hint("skill_%d" % (i + 1))
 		else:
 			slot["key"].visible = false
 		if i < _touch_skill_btns.size():
@@ -973,7 +983,47 @@ func _refresh_hint() -> void:
 	_hint_label.visible = not run.player_hidden
 	if run.player_hidden:
 		return
-	_hint_label.text = "WASD 推进 · Shift 加力 · J/K 技能 · F 使用物品"
+	var mode := "pad" if Controls.using_pad() else "kb"
+	if mode == _hint_device:
+		return
+	_hint_device = mode
+	if Controls.using_pad():
+		_hint_label.text = "左摇杆 推进 · RB 加力 · Y/B 技能 · X 使用物品"
+	else:
+		_hint_label.text = "WASD 推进 · Shift 加力 · J/K 技能 · F 使用物品"
+
+## 当前设备下的键位标签；触屏返回空串（触屏直接点按钮）。
+func _key(action: String) -> String:
+	if Store.touch_mode:
+		return ""
+	return Controls.hint(action)
+
+## "  [X]" 形式的键位尾注，触屏为空。
+func _key_tag(action: String) -> String:
+	var k := _key(action)
+	return "" if k == "" else "  [%s]" % k
+
+## 设备切换：键位提示全部换成新设备的；打开着的面板按当前状态重画，
+## 面板里显示的数字/方向键/ABXY 才不会停留在上一个设备。
+func _on_device_changed(_pad: bool) -> void:
+	_inv_sig = ""
+	_refresh_hint()
+	if run == null or not overlay.visible:
+		return
+	match run.state:
+		Run.State.LEVELUP:
+			show_levelup(run.upgrade_cards)
+		Run.State.SHOP:
+			show_shop(run.shop_stock, run.tokens)
+		Run.State.AWAKEN_CHOICE:
+			show_awaken_choice(str(run._pending_awaken_skill), run._pending_awaken)
+		Run.State.REPLACE_SKILL:
+			show_skill_replace(run.skills, str(run._pending_skill))
+		Run.State.DESTROY:
+			show_destroy(run.inventory, str(run._pending_item))
+		Run.State.DEAD:
+			if not _last_summary.is_empty():
+				show_gameover(_last_summary)
 
 func _world_to_screen(p: Vector2) -> Vector2:
 	var cam: Camera2D = run.camera
@@ -1193,16 +1243,18 @@ func show_levelup(cards: Array) -> void:
 	_set_overlay_mode(true)
 	_clear_overlay()
 	_dim_background()
-	var panel := _center_panel(1040.0, 560.0)
+	var panel := _center_panel(1040.0, 600.0)
 	_title(panel, "升级 · 选择一项强化", 26, 34, EG.C_CYAN)
-	var sub := Assets.label("1 / 2 / 3  或点击卡片", 14, EG.C_DIM)
+	var sub_text := "点击卡片选择强化" if Store.touch_mode else "%s / %s / %s  或点击卡片" % [
+		Controls.hint("card_1"), Controls.hint("card_2"), Controls.hint("card_3")]
+	var sub := Assets.label(sub_text, 14, EG.C_DIM)
 	sub.position = Vector2(0, 72)
 	sub.size = Vector2(panel.size.x, 20)
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	panel.add_child(sub)
 	var hb := HBoxContainer.new()
-	hb.position = Vector2(40, 108)
-	hb.size = Vector2(960, 400)
+	hb.position = Vector2(40, 104)
+	hb.size = Vector2(960, 438)
 	hb.add_theme_constant_override("separation", 20)
 	panel.add_child(hb)
 	for i in range(cards.size()):
@@ -1210,8 +1262,8 @@ func show_levelup(cards: Array) -> void:
 
 func _make_card(card: Dictionary, idx: int) -> Control:
 	var c := Control.new()
-	c.custom_minimum_size = Vector2(306, 396)
-	c.size = Vector2(306, 396)
+	c.custom_minimum_size = Vector2(306, 430)
+	c.size = Vector2(306, 430)
 	var bg := Assets.panel("card_9p")
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	c.add_child(bg)
@@ -1236,21 +1288,24 @@ func _make_card(card: Dictionary, idx: int) -> Control:
 	title.size = Vector2(274, 30)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	c.add_child(title)
-	var desc := Assets.label(card.get("desc", ""), 15, EG.C_DIM)
-	desc.position = Vector2(28, 236)
-	desc.size = Vector2(250, 100)
-	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# 说明区从 100px 放大到 160px，并且字号会按实际排版高度自适应缩小；
+	# 以前固定 15px + 100px 高，长说明（替换技能、改装描述）会被卡片底边裁掉。
+	var desc := Assets.label("", 15, EG.C_DIM)
+	desc.position = Vector2(26, 232)
 	desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	desc.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_fit_label(desc, str(card.get("desc", "")), Vector2(254, 160), 15)
 	c.add_child(desc)
 	var rl := Assets.label(Defs.RARITY.get(rarity, {"name": "普通"})["name"], 13, rc)
-	rl.position = Vector2(16, 360)
+	rl.position = Vector2(16, 398)
 	rl.size = Vector2(274, 20)
 	rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	c.add_child(rl)
-	var key := Assets.label(str(idx + 1), 20, EG.C_CYAN, 3)
-	key.position = Vector2(20, 14)
-	key.size = Vector2(30, 26)
-	c.add_child(key)
+	if not Store.touch_mode:
+		var key := Assets.label(Controls.hint("card_%d" % (idx + 1)), 20, EG.C_CYAN, 3)
+		key.position = Vector2(18, 12)
+		key.size = Vector2(40, 28)
+		c.add_child(key)
 	var btn := Button.new()
 	btn.flat = true
 	btn.focus_mode = Control.FOCUS_NONE
@@ -1262,6 +1317,32 @@ func _make_card(card: Dictionary, idx: int) -> Control:
 	btn.pressed.connect(func(): run.choose_upgrade(idx))
 	c.add_child(btn)
 	return c
+
+## 说明文字按实测排版高度选字号：先按基准字号排，放不进就逐级缩小（下限 10px）。
+## 两个容易踩的坑都在这里绕开：
+##  1. `size` 必须在 `autowrap_mode` 之后设置。否则 Label 先按“不换行”的整行宽度
+##     把尺寸撑大，之后再开自动换行也不会缩回去——旧版长说明就是这样被裁掉的。
+##  2. 测高显式带 `BREAK_GRAPHEME_BOUND`。部分导出模板里 CJK 的 word-bound
+##     断行不可用，`get_multiline_string_size` 会按一整行返回，自适应会失效。
+func _fit_label(l: Label, text: String, box: Vector2, base_size: int, min_size: int = 10) -> int:
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var font := Assets.font()
+	var width := box.x - 4.0
+	var spacing := float(l.get_theme_constant("line_spacing"))
+	var flags := TextServer.BREAK_MANDATORY | TextServer.BREAK_WORD_BOUND | TextServer.BREAK_GRAPHEME_BOUND
+	var fs := base_size
+	while fs > min_size:
+		var need := font.get_multiline_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, width, fs, -1, flags)
+		var line_h := maxf(font.get_height(fs), 1.0)
+		var lines := maxi(1, roundi(need.y / line_h))
+		var total := need.y + spacing * float(lines - 1)
+		if total <= box.y - 2.0:
+			break
+		fs -= 1
+	l.text = text
+	l.add_theme_font_size_override("font_size", fs)
+	l.size = box
+	return fs
 
 func hide_levelup() -> void:
 	overlay.visible = false
@@ -1290,7 +1371,14 @@ func show_shop(stock: Array, tokens_now: int) -> void:
 	panel.add_child(tok_label)
 	for i in range(stock.size()):
 		panel.add_child(_make_shop_row(stock[i], i, panel.size.x))
-	var close := Assets.button("离开商店  [F]", 18)
+	var shop_hint_text := "点击货架购买" if Store.touch_mode else "%s / %s / %s 购买 · %s 离开" % [
+		Controls.hint("card_1"), Controls.hint("card_2"), Controls.hint("card_3"), Controls.hint("use_item")]
+	var shop_hint := Assets.label(shop_hint_text, 12, EG.C_DIM)
+	shop_hint.position = Vector2(0, 424)
+	shop_hint.size = Vector2(panel.size.x, 18)
+	shop_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	panel.add_child(shop_hint)
+	var close := Assets.button("离开商店" + _key_tag("use_item"), 18)
 	close.position = Vector2(panel.size.x * 0.5 - 120, panel.size.y - 74)
 	close.size = Vector2(240, 50)
 	close.pressed.connect(func(): run.close_shop())
@@ -1322,10 +1410,9 @@ func _make_shop_row(offer: Dictionary, idx: int, panel_w: float) -> Control:
 	name_l.position = Vector2(98, 10)
 	name_l.size = Vector2(520, 26)
 	row.add_child(name_l)
-	var desc := Assets.label(desc_text, 13, EG.C_DIM)
+	var desc := Assets.label("", 13, EG.C_DIM)
 	desc.position = Vector2(98, 40)
-	desc.size = Vector2(560, 50)
-	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_fit_label(desc, desc_text, Vector2(560, 50), 13)
 	row.add_child(desc)
 	var price_l := Assets.label("", 18, EG.C_AMBER)
 	price_l.position = Vector2(panel_w - 430, 30)
@@ -1353,10 +1440,9 @@ func show_skill_replace(skills_now: Array, new_id: String) -> void:
 	var panel := _center_panel(920.0, 460.0)
 	_title(panel, "技能槽已满 · 选择要替换的技能", 24, 30, EG.C_AMBER)
 	var new_data: Dictionary = Defs.SKILLS[new_id]
-	var sub := Assets.label("新技能：%s · %s" % [new_data["name"], new_data["desc"]], 15, EG.C_DIM)
+	var sub := Assets.label("", 15, EG.C_DIM)
 	sub.position = Vector2(30, 68)
-	sub.size = Vector2(panel.size.x - 60, 44)
-	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_fit_label(sub, "新技能：%s · %s" % [new_data["name"], new_data["desc"]], Vector2(panel.size.x - 60, 44), 15)
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	panel.add_child(sub)
 	for i in range(skills_now.size()):
@@ -1385,7 +1471,7 @@ func show_skill_replace(skills_now: Array, new_id: String) -> void:
 		lv_l.size = Vector2(264, 20)
 		lv_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		card.add_child(lv_l)
-		var b := Assets.button("替换 [%d]" % (i + 1), 16)
+		var b := Assets.button("替换" + _key_tag("card_%d" % (i + 1)), 16)
 		b.position = Vector2(52, 164)
 		b.size = Vector2(160, 38)
 		b.custom_minimum_size = Vector2(160, 38)
@@ -1441,13 +1527,12 @@ func show_awaken_choice(skill_id: String, branches: Array) -> void:
 		nm.size = Vector2(388, 28)
 		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		card.add_child(nm)
-		var desc := Assets.label(str(data["desc"]), 14, EG.C_DIM)
+		var desc := Assets.label("", 14, EG.C_DIM)
 		desc.position = Vector2(24, 184)
-		desc.size = Vector2(340, 62)
-		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_fit_label(desc, str(data["desc"]), Vector2(340, 62), 14)
 		card.add_child(desc)
-		var b := Assets.button("选择 [%d]" % (i + 1), 16)
+		var b := Assets.button("选择" + _key_tag("card_%d" % (i + 1)), 16)
 		b.position = Vector2(114, 250)
 		b.size = Vector2(160, 38)
 		b.custom_minimum_size = Vector2(160, 38)
@@ -1504,7 +1589,7 @@ func show_destroy(inventory: Array, pending_id: String) -> void:
 		ic.custom_minimum_size = Vector2(96, 72)
 		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		col.add_child(ic)
-		var b := Assets.button("丢弃 %d" % (i + 1), 14)
+		var b := Assets.button("丢弃" + _key_tag("card_%d" % (i + 1)), 14)
 		b.custom_minimum_size = Vector2(120, 40)
 		b.size = Vector2(120, 40)
 		b.pressed.connect(func(): run.destroy_and_take(i))
@@ -1516,6 +1601,7 @@ func hide_destroy() -> void:
 	_clear_overlay()
 
 func show_gameover(summary: Dictionary) -> void:
+	_last_summary = summary
 	overlay.visible = true
 	_set_overlay_mode(true)
 	info_root.visible = false
@@ -1558,7 +1644,7 @@ func show_gameover(summary: Dictionary) -> void:
 	best.size = Vector2(panel.size.x, 22)
 	best.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	panel.add_child(best)
-	var again := Assets.button("再来一局  [R]", 20)
+	var again := Assets.button("再来一局" + _key_tag("restart"), 20)
 	again.position = Vector2(panel.size.x * 0.5 - 260, 404)
 	again.size = Vector2(240, 56)
 	again.custom_minimum_size = Vector2(240, 56)

@@ -31,7 +31,7 @@ const SHIP_BOOST_MAX := 6.6          # initial gauge; 3x the old 2.2 s tank
 const SHIP_BOOST_REFILL := 1.6          # per second, after the 0.7 s pause
 const SHIP_BOOST_RESUME := 0.22         # hysteresis: refill before re-engage
 const SHIP_BOOST_REFILL_DELAY := 0.7
-const SHIP_FUEL_MAX := 500.0
+const SHIP_FUEL_MAX := 100.0        # 1.4.0：燃料槽从 500 收紧到 100，补给更有分量
 const SHIP_FUEL_THRUST := 4.0        # per second of full thrust (actual delta-v)
 const SHIP_FUEL_BOOST := 4.8          # 1.2x thrust cost (was 2x)
 const SHIP_FUEL_ASSIST := 0.4         # orbit assist / docking brake, 10% of thrust
@@ -51,6 +51,13 @@ const MISSILE_DMG_ENEMY := 25.0
 const MISSILE_DMG_SHIP := 25.0
 const MISSILE_MAX_LOCKED := 3
 const MISSILE_GRAVITY_SCALE := 0.6      # always applied; no assist on missiles
+## 锁定期把敌人外壳当实体：导弹提前转向绕飞，物理上也不允许弹体穿进外壳。
+## 玩家绕圈时导弹会贴着外壳滑过去，而不是从敌人中间直接穿到另一侧。
+const MISSILE_AVOID_MARGIN := 26.0      # 航向即将擦到“外壳 + 该余量”时开始绕
+const MISSILE_AVOID_LOOKAHEAD := 220.0  # 提前这么远开始修正航向
+## 硬约束的落点稍微压进碰撞半径 0.5px：绕不开的导弹会在碰撞结算里真的打在
+## 外壳上（脱锁后的发射者同理），而不是贴着外壳滑过去白飞。
+const MISSILE_AVOID_INSET := 0.5
 
 # ---- Enemy (turret) ----
 const TURRET_RADIUS := 420.0
@@ -136,7 +143,7 @@ const PYLON_BURST := 2
 const PYLON_OVERHEAT := 2.6
 const PYLON_SPEED_OUT := 210.0
 const PYLON_SPEED_IN := 26.0
-const PYLON_GAP := 750.0             # 两站间距
+const PYLON_GAP := 1500.0            # 两站间距（1.4.0：750 → 1500，两节点生成距离 ×2）
 const PYLON_ORBIT := 0.42            # 公转角速度（rad/s）
 const PYLON_HEAL_DELAY := 3.0        # 受击后多久开始回血
 const PYLON_HEAL_TIME := 3.0         # 回血持续时间
@@ -286,7 +293,7 @@ const MATTER_ABSORB := 260.0
 const MATTER_TRACTOR_SPEED := 1200.0
 const MATTER_TRACTOR_LOCK := 5.0
 const MATTER_COLLECT_RADIUS := 40.0
-const XP_PER_LEVEL := 20.0
+const XP_PER_LEVEL := 100.0          # 1.4.0：升级所需经验 ×5（20 → 100）
 const MATTER_BIG_CHANCE := 0.33
 const MATTER_BIG_XP := 3
 const MATTER_SMALL_XP := 1

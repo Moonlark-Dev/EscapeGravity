@@ -14,6 +14,8 @@ func run_tests() -> void:
 	_test_gravity()
 	_test_momentum_and_assist()
 	_test_missiles()
+	_test_input_hints()
+	_test_upgrade_card_fit()
 	_test_meteor_matter()
 	_test_impact_damage()
 	_test_safe_zone_upgrades()
@@ -381,7 +383,95 @@ func _test_missiles() -> void:
 	var mo: Missile = r.missiles[r.missiles.size() - 1]
 	_check("视野外导弹仍从侧方 820px 进入", absf(mo.position.distance_to(r.ship.position) - 820.0) < 45.0,
 		"d=%.0f" % mo.position.distance_to(r.ship.position))
+
+	# 锁定期不与来源敌人结算碰撞（避免刚出膛自爆）；脱锁后才可能撞回发射者。
+	for mm in r.missiles.duplicate():
+		mm.remove()
+	r.missiles.clear()
+	for en in r.enemies.duplicate():
+		en.remove()
+	r.enemies.clear()
+	r.current_enemy = null
+	var e_src := _make_enemy(r, Vector2(0, -1600))
+	var m_src := r.spawn_enemy_missile(e_src, e_src.position + Vector2(e_src.radius + 2.0, 0), PI)
+	var hp_src := e_src.hp
+	r._resolve_collisions()
+	_check("锁定期导弹不与发射者结算碰撞", absf(e_src.hp - hp_src) < 0.01 and not m_src.dead,
+		"hp=%.1f" % e_src.hp)
+	m_src.unlock()
+	r._resolve_collisions()
+	_check("脱锁后导弹可以撞回发射者", absf(e_src.hp - (hp_src - 25.0)) < 0.01,
+		"hp=%.1f" % e_src.hp)
+
+	# 锁定期导弹把敌人外壳当实体：玩家绕到敌人另一侧时，导弹要贴壳绕飞，
+	# 不能从敌人正中间直接穿过去。
+	for en in r.enemies.duplicate():
+		en.remove()
+	r.enemies.clear()
+	r.current_enemy = null
+	for mm in r.missiles.duplicate():
+		mm.remove()
+	r.missiles.clear()
+	r.ship.position = Vector2.ZERO
+	r.ship.vel = Vector2.ZERO
+	var e_obs := _make_enemy(r, Vector2(0, -900))
+	var m_obs := r.spawn_enemy_missile(e_obs, Vector2(0, -2100), PI * 0.5)
+	m_obs.source = null
+	m_obs.seen = false
+	var min_clear := 1.0e9
+	var detour := 0.0
+	for i in range(int(9.0 * 60.0)):
+		m_obs.step(dt)
+		if m_obs.dead:
+			break
+		min_clear = minf(min_clear, m_obs.position.distance_to(e_obs.position) - e_obs.radius)
+		detour = maxf(detour, absf(m_obs.position.x))
+	_check("锁定期导弹不会穿进敌人外壳", m_obs.is_locked() and min_clear >= EG.MISSILE_RADIUS - 1.0,
+		"min_clear=%.1f" % min_clear)
+	_check("锁定期导弹贴着外壳绕飞（横向绕行）", detour > 120.0, "detour=%.0f" % detour)
 	_kill(r)
+
+## 键位提示必须跟着最近一次操作的设备切换：用手柄时只给手柄键位。
+func _test_input_hints() -> void:
+	Controls.set_pad_mode(false)
+	_check("键鼠操作只显示键盘键位",
+		Controls.hint("boost") == "Shift" and Controls.hint("use_item") == "F"
+		and Controls.hint("pause") == "Esc")
+	Controls.set_pad_mode(true)
+	_check("手柄操作只显示手柄键位",
+		Controls.hint("boost") == "RB" and Controls.hint("use_item") == "X"
+		and Controls.hint("skill_1") == "Y" and Controls.hint("skill_2") == "B"
+		and Controls.hint("pause") == "Start")
+	var pad_cards := 0
+	for i in range(1, 4):
+		for ev in InputMap.action_get_events("card_%d" % i):
+			if ev is InputEventJoypadButton:
+				pad_cards += 1
+	_check("手柄方向键绑定到升级/商店卡槽", pad_cards == 3, "n=%d" % pad_cards)
+	var key_ev := InputEventKey.new()
+	key_ev.pressed = true
+	key_ev.physical_keycode = KEY_W
+	Controls._input(key_ev)
+	_check("按下键盘自动切回键盘键位",
+		not Controls.using_pad() and Controls.hint("use_item") == "F")
+
+## 升级卡说明区：短说明保持原字号，超长说明自适应缩小并完整放进卡片。
+func _test_upgrade_card_fit() -> void:
+	var hud_ui := Hud.new()
+	add_child(hud_ui)
+	var short_l := Assets.label("", 15, Color.WHITE)
+	var short_fs: int = hud_ui._fit_label(short_l, "恢复 25% 护盾。", Vector2(254, 160), 15)
+	var long_text := "技能槽已满：选择后替换一个技能，继承其一半等级。".repeat(8)
+	var long_l := Assets.label("", 15, Color.WHITE)
+	var long_fs: int = hud_ui._fit_label(long_l, long_text, Vector2(254, 160), 15)
+	hud_ui.add_child(short_l)
+	hud_ui.add_child(long_l)
+	var long_h: float = long_l.get_minimum_size().y
+	_check("升级卡短说明保持 15px", short_fs == 15)
+	_check("升级卡长说明自适应缩字号并完整放下",
+		long_fs < 15 and long_fs >= 10 and long_h <= 160.0 and long_h > 20.0,
+		"fs=%d h=%.0f" % [long_fs, long_h])
+	hud_ui.free()
 
 func _test_meteor_matter() -> void:
 	var r := _new_run(104)
@@ -458,7 +548,7 @@ func _test_meteor_matter() -> void:
 	_step(r, 1.0)
 	_check("高速远离时物质仍会追上并被吸收（不会被甩飞）",
 		r.xp >= 3.0 and chase.collected, "xp=%.0f d=%.0f" % [r.xp, chase.position.distance_to(r.ship.position)])
-	_check("每 20 XP 升级", EG.XP_PER_LEVEL == 20.0)
+	_check("每 100 XP 升级（1.4.0 经验 ×5）", EG.XP_PER_LEVEL == 100.0)
 	_kill(r)
 
 func _test_impact_damage() -> void:
@@ -1054,8 +1144,8 @@ func _test_streaming() -> void:
 		if b.position.distance_to(far) < 6000.0:
 			near += 1
 	_check("远离出生点仍有天体区块", near >= 3, "near=%d total=%d" % [near, r.galaxy.bodies.size()])
-	var has_matter_field := r.ship.fuel_max >= 500.0
-	_check("初始燃料 500", has_matter_field and absf(r.ship.fuel - 500.0) < 0.01, "fuel=%.0f" % r.ship.fuel)
+	var has_matter_field := r.ship.fuel_max == EG.SHIP_FUEL_MAX
+	_check("初始燃料 100（燃料槽 500 → 100）", has_matter_field and absf(r.ship.fuel - 100.0) < 0.01, "fuel=%.0f" % r.ship.fuel)
 	_kill(r)
 
 func _test_route() -> void:
@@ -1402,7 +1492,7 @@ func _test_new_enemies() -> void:
 	_check("母舰转向极慢 0.35 rad/s", absf(EG.AEGIS_TURN - 0.35) < 0.001)
 	_kill(r)
 
-	# 双子中继站：成对刷新、间距 750、倒地一座后另一座继续。
+	# 双子中继站：成对刷新、间距 1500（两节点生成距离 ×2）、倒地一座后另一座继续。
 	var r2 := _new_run(151)
 	_clear_arena(r2)
 	r2.galaxy.bodies.clear()
@@ -1410,7 +1500,8 @@ func _test_new_enemies() -> void:
 	r2.spawn_enemy()
 	var pair: Array = r2.enemies.duplicate()
 	_check("双子中继站成对刷新", pair.size() == 2 and pair[0].twin == pair[1] and pair[1].twin == pair[0])
-	_check("双子间距 750px", absf(pair[0].position.distance_to(pair[1].position) - EG.PYLON_GAP) < 3.0,
+	_check("双子节点生成间距 1500px（1.4.0 翻倍）",
+		absf(EG.PYLON_GAP - 1500.0) < 0.01 and absf(pair[0].position.distance_to(pair[1].position) - EG.PYLON_GAP) < 3.0,
 		"gap=%.0f" % pair[0].position.distance_to(pair[1].position))
 	pair[0].reveal(true)
 	pair[1].reveal(true)
@@ -1551,10 +1642,10 @@ func _test_core_mods() -> void:
 	r.galaxy.bodies.clear()
 	r.ship.position = Vector2.ZERO
 	r.add_mod("gravity_turbine")
-	r.ship.fuel = 100.0
+	r.ship.fuel = r.ship.fuel_max - 10.0
 	r.orbit_assist = true
 	r._update_mods(1.0)
-	_check("引力涡轮环绕行星每秒回 3 燃料", absf(r.ship.fuel - 103.0) < 0.05, "fuel=%.2f" % r.ship.fuel)
+	_check("引力涡轮环绕行星每秒回 3 燃料", absf(r.ship.fuel - (r.ship.fuel_max - 7.0)) < 0.05, "fuel=%.2f" % r.ship.fuel)
 	r.orbit_assist = false
 
 	r.add_mod("relativist")
@@ -1660,10 +1751,10 @@ func _test_core_mods() -> void:
 
 	r4.add_mod("recycle_reactor")
 	r4.skills[0]["cd"] = 3.0
-	r4.ship.fuel = 100.0
+	r4.ship.fuel = r4.ship.fuel_max - 10.0
 	r4.recycle_reward()
 	_check("回收反应堆：技能 -0.8s、+3 燃料",
-		absf(float(r4.skills[0]["cd"]) - 2.2) < 0.01 and absf(r4.ship.fuel - 103.0) < 0.01)
+		absf(float(r4.skills[0]["cd"]) - 2.2) < 0.01 and absf(r4.ship.fuel - (r4.ship.fuel_max - 7.0)) < 0.01)
 
 	r4.add_mod("battlefield_ready")
 	r4.inventory = ["charge"]
@@ -1878,6 +1969,9 @@ func _bot_attempt(seed_value: int, orbit_radius: float, invuln: bool) -> Diction
 	r.galaxy.bodies.clear()
 	r.ship.position = Vector2.ZERO
 	r.ship.vel = Vector2.ZERO
+	# 机器人几乎每帧都在满推力绕圈，油耗远高于真人（真人会滑行、进安全区补给）；
+	# 这里单独放宽燃料，只验证“把导弹诱导到敌人外壳上”的核心循环。
+	r.ship.fuel_max = 500.0
 	r.ship.fuel = r.ship.fuel_max
 	r.ship.shield = 1000.0 if invuln else 20.0
 	r.ship.shield_max = 1000.0 if invuln else 20.0
