@@ -114,10 +114,16 @@ static func roll_upgrades(run, rng: RandomNumberGenerator) -> Array:
 	var weights := {}
 	weights["repair_25"] = 12.0 if run.ship.shield < run.ship.shield_max * 0.98 else 2.0
 	weights["repair_full"] = 5.0 if run.ship.shield < run.ship.shield_max * 0.9 else 0.8
-	weights["fuel_25"] = 12.0 if run.ship.fuel < run.ship.fuel_max * 0.98 else 2.0
+	# 安全区进站瞬间就把燃料补满（见 Run._enter_safe），满油时这张卡收益为 0，
+	# 不能再塞进面板；只有在圈内又烧掉燃料后才重新有资格出现。
+	weights["fuel_25"] = 12.0 if run.ship.fuel < run.ship.fuel_max * 0.98 else 0.0
 	weights["fuel_max_10"] = 9.0
 	weights["fuel_max_20"] = 5.0
-	weights["slot"] = 6.0 if run.inventory.size() < run.item_slots and run.item_slots < EG.ITEM_SLOTS_MAX else 0.0
+	# 扩建卡看的是“栏位还能不能再扩”（与背包是否装满无关）；背包越满越值得出现。
+	var slot_weight := 0.0
+	if run.item_slots < EG.ITEM_SLOTS_MAX:
+		slot_weight = 10.0 if run.inventory.size() >= run.item_slots else 6.0
+	weights["slot"] = slot_weight
 	weights["token_1"] = 10.0
 	weights["token_2"] = 5.0
 	weights["token_3"] = 2.0
@@ -133,7 +139,8 @@ static func roll_upgrades(run, rng: RandomNumberGenerator) -> Array:
 	for i in range(3):
 		var total := 0.0
 		for k in keys:
-			if picked_ids.has(k):
+			# 权重为 0 的卡是“当前没有任何收益”（满油、栏位已满等），一律不进卡池。
+			if picked_ids.has(k) or float(weights[k]) <= 0.0:
 				continue
 			total += float(weights[k])
 		if total <= 0.0:
@@ -141,7 +148,7 @@ static func roll_upgrades(run, rng: RandomNumberGenerator) -> Array:
 		var r := rng.randf() * total
 		var chosen = ""
 		for k in keys:
-			if picked_ids.has(k):
+			if picked_ids.has(k) or float(weights[k]) <= 0.0:
 				continue
 			r -= float(weights[k])
 			if r <= 0.0:

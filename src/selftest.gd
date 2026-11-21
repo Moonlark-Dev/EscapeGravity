@@ -613,6 +613,46 @@ func _test_inventory_and_upgrades() -> void:
 	_check("物品栏上限 5 / 技能槽 2", EG.ITEM_SLOTS_MAX == 5 and EG.SKILL_SLOTS == 2)
 	_kill(r)
 
+	# 安全区进站即把燃料补满，之后才开升级面板：满油时“恢复 25% 燃料”是零收益废卡。
+	var rf := _new_run(128)
+	_clear_arena(rf)
+	rf.ship.fuel = rf.ship.fuel_max
+	var fuel_card_seen := false
+	for i in range(120):
+		for c in Defs.roll_upgrades(rf, rf.rng):
+			if c["id"] == "fuel_25":
+				fuel_card_seen = true
+	_check("满油时不再提供燃料卡", not fuel_card_seen)
+	rf.ship.fuel = rf.ship.fuel_max * 0.5
+	var fuel_card_low := false
+	for i in range(40):
+		for c in Defs.roll_upgrades(rf, rf.rng):
+			if c["id"] == "fuel_25":
+				fuel_card_low = true
+	_check("燃料不足时仍会提供燃料卡", fuel_card_low)
+	_kill(rf)
+
+	# 扩建卡的条件曾经写反：`inventory.size() < item_slots` 让背包一装满就永远
+	# 抽不到扩建。它只该看“栏位还能不能再扩”。
+	var rs := _new_run(129)
+	_clear_arena(rs)
+	rs.item_slots = 2
+	rs.inventory = ["fuel", "repair"]
+	var slot_when_full := false
+	for i in range(120):
+		for c in Defs.roll_upgrades(rs, rs.rng):
+			if c["id"] == "slot":
+				slot_when_full = true
+	_check("2 格背包装满时仍能抽到物品栏扩建", slot_when_full)
+	rs.inventory = ["fuel"]
+	var slot_when_open := false
+	for i in range(120):
+		for c in Defs.roll_upgrades(rs, rs.rng):
+			if c["id"] == "slot":
+				slot_when_open = true
+	_check("背包没满时也能抽到物品栏扩建", slot_when_open)
+	_kill(rs)
+
 func _test_skills() -> void:
 	var r := _new_run(107)
 	_clear_arena(r)
