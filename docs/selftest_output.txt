@@ -72,10 +72,11 @@ PASS  关闭商店回到游戏
 PASS  物品栏基础 2 格
 PASS  满栏时销毁后可放入新道具   ["repair", "flare"]
 PASS  5 格上限后不再提供物品栏卡
-PASS  技能槽满后不再提供新技能
+PASS  技能槽满后仍能刷出新技能（带替换标记）
 PASS  物品栏上限 5 / 技能槽 2
-PASS  满油时不再提供燃料卡
-PASS  燃料不足时仍会提供燃料卡
+PASS  节能巡航取代燃料卡进入升级池
+PASS  节能巡航把油耗降到 0.88
+PASS  油耗叠到 5 折后不再提供节能巡航
 PASS  2 格背包装满时仍能抽到物品栏扩建
 PASS  背包没满时也能抽到物品栏扩建
 PASS  脉冲消耗 10 燃料   fuel=490.0
@@ -175,6 +176,69 @@ PASS  离开商店后立即补上下一座信标   shop=true
 PASS  停靠安全区（安全区内击杀的挂起路径）
 PASS  在安全区内击败敌人不会抽走当前安全区
 PASS  离开安全区后立即补上下一个安全区
+PASS  五种主敌人随深度轮换   ["turret", "nest", "aegis", "singularity", "twin"]
+PASS  深度 6 起每 4 层一个精英词缀
+PASS  深层血量膨胀降到 +14%/层   hp=45.60
+PASS  母舰正面伤害衰减 80% 且不触发过热   dmg=5.0 heat=false
+PASS  母舰舰尾吃 1.5 倍暴击（37.5）
+PASS  母舰舰尾暴击进入 4 秒长过热
+PASS  母舰转向极慢 0.35 rad/s
+PASS  双子中继站成对刷新
+PASS  双子间距 750px   gap=750
+PASS  中弹后 3 秒才开始回血
+PASS  未过热的联动站让另一座缓慢回血   hp=26.2 -> 29.8
+PASS  击毁一座后遭遇战继续、深度不推进
+PASS  两座都倒下才推进深度
+PASS  引力阱舰默认是斥力态
+PASS  斥力环把低速直射弹推偏擦过
+PASS  高速导弹不会被斥力环掰弯
+PASS  虹吸态把浮空导弹吸向舰体
+PASS  虹吸结束立刻蓄好一次齐射
+PASS  深度 1~2 只有普通弹
+PASS  二段加速弹出膛速度 110
+PASS  点火前保持低速高转向
+PASS  点火后 340 px/s、角速度暴跌至 0.12
+PASS  子母分裂弹锁定结束分裂成 3 枚无锁弹头
+PASS  分裂弹头对敌 12 伤且无锁
+PASS  拦截点防吃掉低速零星导弹
+PASS  加速导弹凿穿拦截点防
+PASS  相位跃迁把敌人跳到玩家侧翼 900px   d=900
+PASS  超载殉爆一次抛射 6 枚水雷   mines=6
+PASS  精英词缀不再只堆血量（殉爆型血量更低）
+PASS  引力涡轮环绕行星每秒回 3 燃料   fuel=103.00
+PASS  相对论弹头按 400 px/s 给 +32 伤害   bonus=32.0
+PASS  近炸增幅：130px 内脱锁伤害翻倍并回 1.5 护盾   dmg=50.0 shield=11.50
+PASS  惯性制导篡改把脱锁弹朝敌人微偏 12°   ang=12.00
+PASS  连锁殉爆只影响 450px 内导弹
+PASS  连锁殉爆让近处导弹脱锁并被吸向敌人
+PASS  质量投射器用脉冲把陨石轰飞   v=320
+PASS  被撞飞的陨石对敌 18 伤
+PASS  木马协议把无人机反向骇入成 560 px/s 弹药
+PASS  引力碎星带撞陨石不掉血也不减速
+PASS  共振奇点让区内导弹提速 60% 并刷新寿命   speed=240.0
+PASS  回收反应堆：技能 -0.8s、+3 燃料
+PASS  战地整备在用道具后给出 3 秒免费加力   t=3.00
+PASS  免费加力窗口内 ship.boost_free 生效
+PASS  Lv3 技能进入超载觉醒池   n=2
+PASS  觉醒后技能到 Lv4 并记录分支
+PASS  聚能扇面把范围内导弹统一推向机头正前方   ang=11.7
+PASS  零点静滞打断齐射并把过热延长 1.5 秒   burst=0 heat=1.50
+PASS  残影诱饵在冲刺起点留下 3 秒信标
+PASS  镜像双生一次投放两枚信标   n=2
+PASS  双极锚定沿切线甩出吸拢的导弹   ang=-1.57
+PASS  技能槽满时选新技能进入替换流程
+PASS  替换后新技能继承原槽一半等级
+PASS  取消技能替换会退还这次升级   pending=1 state=1
+PASS  商店固定三货架
+PASS  黑市货架必出改装或技能觉醒   ["item", "service", "mod"]
+PASS  三货架价格区间 1~2 / 3~4 / 5~7   [2, 3, 6]
+PASS  黑市改装位买下即生效
+PASS  购买扣除对应代币
+PASS  现场维修回满护盾且不占背包格
+PASS  背包满时购买进入丢弃替换流程
+PASS  丢弃后回到商店面板并拿到道具
+PASS  深度 6 刷新出带词缀的精英攻击者   affix=point_defense
+PASS  八层内容冒烟：五种敌人全部跑过实际模拟   ["turret", "nest", "aegis", "singularity", "twin"]
 PASS  初始安全区落在路线预置点
 PASS  初始商店落在路线预置点
 PASS  初始商店比安全区离玩家更远
@@ -188,4 +252,4 @@ PASS  地图生成时填充了物质   matter=150
   bot seed=302 orbit=880 invuln=true -> hp=0 hits=2 t=11.4s state=0 dmg=
 PASS  无敌机器人能靠诱导击毁炮塔（验证核心循环）   invuln kills 3/3
 PASS  普通机器人也能至少击毁一次炮塔   normal kills 1/3
-RESULT: 181 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 21.5333333333334, "state": 4 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 56.6166666666647, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 0, "time": 8.48333333333333, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 22.8666666666666, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 10.9000000000001, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": true, "hits": 2, "time": 11.3833333333335, "state": 0 }], "invuln_kills": 3, "normal_kills": 1 })
+RESULT: 245 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 21.5333333333334, "state": 4 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 56.6166666666647, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 0, "time": 8.48333333333333, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 22.8666666666666, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 10.9000000000001, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": true, "hits": 2, "time": 11.3833333333335, "state": 0 }], "invuln_kills": 3, "normal_kills": 1 })

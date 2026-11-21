@@ -11,7 +11,7 @@
 |---|---|
 | 2D 俯视、物理驱动、无直接攻击的太空肉鸽 | `src/run.gd` 单局主控；玩家无攻击输入；唯一敌人伤害来源是敌方导弹 |
 | 进入区域 → 攻击者出现 → 追踪导弹 → 诱导撞击 → 过载 → 掉落物质 | `spawn_enemy` → `enemy.step` → `missile.step` → `_resolve_collisions` → `damage_enemy` → `kill_enemy` → `scatter_matter_at` |
-| 逐步深入更高威胁星域 | `depth += 1`（每次摧毁攻击者）；血量 `×(1+0.22(depth-1))`、射速 `×max(0.62, 1-0.035(depth-1))`、速度 `×(1+0.02(depth-1))`；每 5 层精英 ×1.6 |
+| 逐步深入更高威胁星域 | `depth += 1`（每次摧毁攻击者）；血量 `×(1+0.14(depth-1))`、射速 `×max(0.62, 1-0.035(depth-1))`、速度 `×(1+0.02(depth-1))`；深度 6 起每 4 层出带词缀的精英（血量 ×1.45），不再单纯堆血 |
 
 攻击者出生点来自隐藏路线：首个敌人在 1900~2400，之后每段 2100~2700；未被玩家看见前它是隐形的，不显示贴图、不进雷达/方位/血条；玩家进入 2100px 后它以 1.5× 速度逼近，外壳进入屏幕的同一帧才算 `discovered`。未发现的敌人仍会开火：导弹在屏幕边缘外 180~320px 生成，以切线初速绕弧切入，射入方向 72% 落在敌人方位 ±57° 内，其余全随机；这类偷袭弹单独上限 2 枚，不占正常 3 枚直射名额。安全区、商店与敌人都按同一条路线预生成，因此 HUD 方位标记天然沿行进方向排列；路线本身不渲染。安全区预置在相邻两段敌人的中点（首段落在路线前段），横向偏移 470~600px，圆心离两侧敌人预置点 ≥1150px，保证安全区完整半径（280）与炮塔外壳（420）之间至少 450px；安全区出生时贴图只有 R78，玩家到中心才扩张，但间距校验始终使用 `clearance_radius()`（完整 280），刷新时还会按 520px 的贴图间距避开正在交战的敌人。
 
@@ -40,10 +40,10 @@
 | 未发现开火 | 隐藏位置但仍施压，给出方向提示 | `enemy._fire_hidden`：屏幕外生成、切线初速绕弧切入；`ENEMY_HIDDEN_BIAS=0.72` 落在敌人方位 ±`ENEMY_HIDDEN_SPREAD=1.0` 内；`ENEMY_HIDDEN_MAX=2`，`sneak` 不计入 3 枚直射上限 |
 | 攻击欲望 | 视野内大幅提升 | 炮塔 5s（外）/1s（内）；巢 3.6s/1.5s；45% 单发，0.2s 间隔；未发现时也按视野外节奏开火 |
 | 刷新 | 屏幕外、非小型不同时刷新 | `_next_enemy_position`：按 `RunRoute` 预生成顺序取点；首段 1900~2400，之后 2100~2700；被天体压住时在附近成环找空位；不再随机挑方向 |
-| 每星域基础敌人 | 1 个炮塔 | 单敌人；`current_enemy` |
+| 每星域基础敌人 | 1 个炮塔（扩展为 5 种轮换） | 单场遭遇战；`current_enemy`。深度轮换：炮塔→导弹巢→偏导母舰→引力阱舰→双子中继站（双子算 2 个节点、1 场遭遇） |
 | 血条 | 顶部中间 | `ui._refresh_enemy`；仅在 `discovered` 后显示，视野外标注距离 |
 | 炮塔数值 | R420、HP50、导弹 25、速度 150、5s 脱锁、不可加力、脱锁不可再锁 | 同 |
-| 锁定上限 | 3 枚；超出停火 | `locked_missile_count()` 只数直射弹；炮塔 3、巢 4；偷袭弹另有 `ENEMY_HIDDEN_MAX=2` 上限 |
+| 锁定上限 | 3 枚；超出停火 | `locked_missile_count()` 只数直射弹；炮塔/母舰/阱舰/中继站 3、巢 4；偷袭弹另有 `ENEMY_HIDDEN_MAX=2` 上限 |
 | 过热停火 | 2.5s | 命中即 `overheated=true`，`overheat_timer=2.5` |
 | 导弹入场 | 视野外时垂直于敌人-玩家连线进入 | 被发现的敌人在视野外：玩家侧向 820px；视野内：炮塔最近炮口 / 巢前向口，`R+14` 处出膛，角度朝向玩家 + 0.35s 提前量；未发现：屏幕外弧线偷袭 |
 | 导弹绕开敌人 | 锁定状态下自动尝试绕开敌人，避免刚发射就打自己 | `missile.step`：距敌人 <R+34 且航向向内时施加偏转；锁定时不与来源敌人碰撞 |
@@ -65,6 +65,36 @@
 | 脉冲克制 | `_cast_pulse` 对 R300 范围内所有无人机直接 `remove_drone`，原地解体（不推走、不造成伤害） |
 | HUD | 雷达上以 `radar_threat` 显示；首次刷新提示“高速自杀无人机来袭 · 脉冲可将其解体” |
 
+### 3.2 三种全新主敌人（1.3.0）
+
+`Run.enemy_kind_for_depth(depth)` 按 `(depth-1) % 5` 轮换 `turret → nest → aegis → singularity → twin`，属性统一在 `Run._make_attacker` 里填。三者都遵循同一套发现/逼近/开火规则（§3），区别只在“怎么让玩家换一种姿势诱导导弹”。
+
+| 敌人 | 数值 | 机制 | 实现 |
+|---|---|---|---|
+| 偏导母舰 Aegis Carrier | R360 / HP70 / 射速 5.0→1.2s / 移速 200→16 | 正面 **120°** 能量盾：命中点落在舰首 ±60° 内伤害 ×0.2（25→5）且不触发过热；舰尾 ±60° 吃 ×1.5 暴击（37.5）并进入 **4 秒**长过热；转向仅 **0.35 rad/s** | `Enemy.facing` 用 `rotate_toward` 追玩家（`EG.AEGIS_TURN`），贴图与 `shield_arc.png` 随 `facing` 旋转；`Enemy.apply_hit(amount, hit_pos)` 用 `wrapf(hit_angle - facing)` 判定三个扇区，`Run.damage_enemy` 只负责表现 |
+| 引力阱舰 Singularity Rig | R320 / HP60 / 齐射 3 / 移速 150→14 | 每 **7 秒**斥力 + **3.5 秒**虹吸；斥力把速度 <260 的导弹推偏擦过；虹吸把玩家（加速度 260）、导弹与陨石一起拉向舰体，结束时打 **3 发**齐射 | `Enemy._rig_fields` 用 `state_timer` 切换 `siphon`；斥力只做位置推挤、吸力同样按位置速度施加（导弹的锁定转向不会被覆盖）；两张预渲染光环 `ring_repel.png` / `ring_siphon.png` 反向旋转 + 呼吸缩放 |
+| 双子中继站 Twin Pylons | 双核各 R210 / HP42 / 齐射 2 | 成对刷新、**750px** 间距、0.42 rad/s 公转；A 受击且 B 未过热时 **3 秒后** A 按每秒 10% 最大生命回血；一座倒下后另一座失联暴走（提速 1.4×、射速加快、`elite=true`），两座都清空才算遭遇战结束 | `Run.spawn_enemy` 连开两个 `Enemy` 并互设 `twin`；leader 的 `_move_pair` 驱动 `pair_center` 与公转角，跟班位置由 leader 直接写入；`Enemy._update_twin_heal` 维护 `heal_delay/heal_left`；`Run.kill_enemy` 只有 `current_enemy == null` 时才 `depth += 1`、掉物质与刷新修整区；HUD 顶部主条 + 副条（`ui._enemy_bar2`）显示两座血量 |
+
+### 3.3 两种新型敌方弹药（1.3.0）
+
+`Run.roll_enemy_ammo(kind, depth)`：深度 <3 只出普通弹；深层导弹巢 35% 子母分裂弹；其余按 `min(0.5, 0.10×(depth-2))` 出二段加速弹。伤害统一走 `Missile.dmg`（不再写死 `MISSILE_DMG_ENEMY`）。
+
+| 弹药 | 数值 | 行为 |
+|---|---|---|
+| 二段加速弹 Booster Torpedo | 前 1.8s：110 px/s / 0.9 rad/s；点火后：340 px/s / **0.12 rad/s** | `Missile._update_booster` 在 `_age` 越过 1.8s 时切换速度/转向、换尾焰颜色并播 `Fx.warp`；玩家要在点火前把机头骗歪 |
+| 子母分裂弹 Cluster Warhead | 3 枚弹头，各 **12 伤**，185 px/s，7 秒寿命，无锁 | 锁定倒计时结束时 `Missile._split()` 直接销毁母弹并 `Run.spawn_cluster_frag` 生成三枚扇形无锁弹头——不脱锁平飞 |
+| 水雷弹 Mine | 90~120 px/s / 24 秒 / 对敌 14、对玩家 12 | `Run.spawn_mine` 生成无锁慢速弹；超载殉爆一次抛 6 枚，脉冲可以把它们反推回敌人 |
+
+### 3.4 精英词缀与深层斜率（1.3.0）
+
+深层血量斜率从 **+22%/层** 下调到 **+14%/层**（`EG.DEPTH_HP_GROWTH`），精英出现在 `depth >= 6` 且 `(depth-6) % 4 == 0`（`EG.ELITE_DEPTH_START/EVERY`）：血量 ×1.45、齐射 +1，并从三种词缀里抽一个（双子不抽相位跃迁）。
+
+| 词缀 | 实现 |
+|---|---|
+| 拦截点防 Point-Defense | `Enemy._guards` 两颗 `guard_orb.png` 以 1.7 rad/s 环绕；`try_intercept` 每颗球每 **1.2 秒**吃掉一枚导弹，速度 ≥280 的直接凿穿；`_resolve_collisions` 在判定舰体命中前先问拦截 |
+| 相位跃迁 Phase Blink | 过热结束的那一帧 `_on_overheat_end` 把敌人移到玩家侧翼 900px（`push_out_of_bodies` 保证不落进天体），两端各播一次 `Fx.warp` |
+| 超载殉爆 Volatile | 血量 ×0.7；`Enemy.scatter_mines` 在每次过热瞬间环形抛 6 枚水雷，`Run.damage_enemy` 在 `apply_hit` 返回 `overheated` 且未死时调用 |
+
 ## 4. 基础导弹
 
 | 项 | 文档 | 实现 |
@@ -77,6 +107,16 @@
 | 生命周期 | 18s 自毁 | `MISSILE_LIFE=18` |
 | 陨石引爆 | 导弹可被陨石引爆；玩家太近会磨损护盾 | 碰撞双方消失；玩家 135px 内 -2 |
 
+### 4.1 弹药变体对照（1.3.0）
+
+| 弹种 | 速度 | 转向 | 对敌伤害 | 备注 |
+|---|---|---|---|---|
+| 普通 | 150 | 0.525 | 25 | 5s 锁定后脱锁平飞 |
+| 二段加速 | 110 → 340 | 0.9 → 0.12 | 25 | 1.8s 点火，尾焰变亮 |
+| 子母母弹 | 150 | 0.525 | — | 锁定结束时分裂成 3 枚 |
+| 分裂弹头 | 185 | 0 | 12 | 无锁，7s 寿命 |
+| 水雷 | 90~120 | 0 | 14（对玩家 12） | 24s 寿命，可被脉冲反推 |
+
 ## 5. 物质与升级
 
 | 项 | 文档 | 实现 |
@@ -85,7 +125,38 @@
 | 吸取半径 | 260 | `run.absorb_radius=260`；进入即锁定 5s，并以 1200 px/s 直接追向飞船，40px 内拾取 |
 | XP | 小 1 / 大 3 | `MATTER_SMALL_XP/ BIG_XP`；大物质概率 1/3 |
 | 升级曲线 | 固定每 20 XP | `XP_PER_LEVEL=20`；游玩中只累积 `pending_levels`，进入安全区才逐次弹卡（`_enter_safe` → `begin_levelup`） |
-| 升级池 | 修复 25%/100%、燃料 25%、上限 +10/+20、物品栏、代币 1/2/3、加力槽 +10%、加力推力 +7%、获得道具、技能 | `Defs.roll_upgrades` 带权抽取，按条件剔除且**零权重卡不进卡池**：满油时不出燃料卡（安全区进站即补满）、5 格后不出物品栏卡、技能满后不出新技能；物品栏扩建只看 `item_slots < ITEM_SLOTS_MAX`，背包满时权重更高（10 对 6） |
+| 升级池 | 修复 25%/100%、**节能巡航**、燃料上限 +40/+80、物品栏、代币 1/2/3、加力槽 +10%、加力推力 +7%、获得道具、技能（槽满走替换）、**核心改装**、**技能觉醒** | `Defs.roll_upgrades` 带权抽取，权重 ≤0 的卡不进卡池：`eco_cruise` 叠到 5 折后为 0、5 格后 `slot` 为 0、全部改装满层后 `mod_card` 为 0、没有 Lv3 技能时 `skill_awaken` 为 0；`slot` 只看 `item_slots < ITEM_SLOTS_MAX`，背包满时权重 **11**、未满 **6**；`skill_new` 在槽满时仍进池但带 `replace=true`（见 §5.2 与 §11） |
+
+### 5.1 核心改装（1.3.0）
+
+`run.mods: Dictionary`（id → 层数，上限 `EG.MOD_MAX_STACKS=3`），内容表在 `Defs.MODS`，分四流派。升级池的 `mod_card` 与商店黑市位都可能给。
+
+| 流派 | 改装 | 实现 |
+|---|---|---|
+| 引力弹弓 | 引力涡轮 | `_update_mods`：`orbit_assist` 为真时每秒 +3 燃料、+25% 加力槽 |
+| 引力弹弓 | 相对论弹头 | `damage_enemy` 里 `relativist_bonus(m)`：`(speed-200)/50` 取整 ×8 |
+| 引力弹弓 | 曲率尾流 | `_update_absorb`：速度 ≥350 时 `absorb_radius` 260 → 520；`hit_ship_by_meteor` 击飞速度 210 → 420 |
+| 欺骗劫持 | 近炸增幅 | `on_missile_unlock`：距离 ≤130 时 `m.dmg *= 2` 并 `ship.heal(1.5)` |
+| 欺骗劫持 | 惯性制导篡改 | `on_missile_unlock`：速度方向朝最近敌人 `clampf(diff, ±12°)` |
+| 欺骗劫持 | 连锁殉爆 | `damage_enemy` → `_chain_detonate`：450px 内导弹 `unlock()` 并设 `m.chain = e`，`Missile.step` 脱锁后仍以 1.7 rad/s 被吸向它（不是重锁） |
+| 星体台球 | 质量投射器 | `_cast_pulse`：范围内陨石 `knock(dir, 320)`；`meteor_knock_damage()` 返回 18 |
+| 星体台球 | 木马协议 | `_cast_pulse` → `_hack_drone`：`d.hacked=true`、560 px/s 直冲敌人、撞击伤害 15 |
+| 星体台球 | 引力碎星带 | `_update_spawns` 陨石间隔 ×0.5；`hit_ship_by_meteor` 跳过减速与 0.5 护盾磨损 |
+| 陷阱阵列 | 共振奇点 | `_resonance_tick`：任一 `GravityAnchor` 与 `Decoy` 重叠 → 420px 内导弹 `speed = base_speed×1.6`、`life = 0`；`on_decoy_gone` 朝最近敌人甩射 |
+| 陷阱阵列 | 回收反应堆 | 导弹命中敌人/天体后 `recycle_reward()`：所有技能 CD -0.8s、+3 燃料 |
+| 陷阱阵列 | 战地整备 | `use_item_slot` 设 `free_boost_timer=3`；`_update_mods` 每帧写 `ship.boost_free`，`ship.step` 在免费窗口跳过加力槽与燃料扣除 |
+
+### 5.2 技能超载觉醒（1.3.0）
+
+技能达到 Lv3 后，升级池可刷出 `skill_awaken`（`Defs.AWAKENINGS`）。`Run._apply_awaken` 把 `s["awaken"]` 记在技能字典上、等级设 4，`_cast_*` 用 `skill_awaken(id)` 分支；不是独立技能槽。
+
+| 觉醒 | 技能 | 效果 |
+|---|---|---|
+| 聚能扇面 | 脉冲 | 范围内导弹统一推向飞船机头正前方（±15° 抖动） |
+| 零点静滞 | 脉冲 | 半径固定 480；波及敌人时 `Enemy.stasis(1.5)`：清空齐射、过热 +1.5s |
+| 残影诱饵 | 相位滑行 | 冲刺起点 `_drop_decoy(origin, ZERO, 3.0)` |
+| 双极锚定 | 引力锚 | `GravityAnchor.bipolar`；`on_anchor_gone` 把吸拢的导弹沿切线 340 px/s 甩出 |
+| 镜像双生 | 诱饵信标 | 机身前后各投一枚，各 75% 时长 |
 
 ## 6. 护盾 / 陨石
 
@@ -119,6 +190,18 @@
 | 刷新位置 | 路线预置点；每个敌人之间一个；直线距离 ≤ 50 燃料（≈1875px）；**击败敌人后立即刷新** | `RunRoute.safe_at`（首段 0.35、之后 0.50，侧偏 470~600px）；`kill_enemy` → `_refresh_rest_zones` → `_spawn_safe_respawn`；路线缺失时才回退 `find_unexplored_point(700,1875)`；先刷新安全区、后刷新商店，两者不重叠 |
 | 商店 | R280、不回燃料、代币交易；离路线比安全区更远；**击败敌人后立即刷新** | `RunRoute.shop_at`（段内 0.72、侧偏 1200~1600px）；3 件商品，按稀有度 2~5 代币；每次击杀由 `_refresh_rest_zones` 立即移到下一段路线商店点（`_next_route_shop_for_progress` 把游标至少推到当前深度），刷新时记录 `shop_route_leg` / `shop_bound_depth`；停靠在商店内时挂起（`pending_shop_refresh`），离开同一帧补刷；不再有 26s 重开计时 |
 | 燃料耗尽 | 仍可惯性/引力；屏幕内有安全区被吸入；否则结束 | `_check_fuel`：无安全区在屏内且无燃料道具时 12s 结束；`assist_accel` 把无动力飞船拉向安全区 |
+
+### 8.1 商店三货架（1.3.0）
+
+`Run._roll_shop` 固定三行，价格区间来自 `EG.SHOP_SHELF_MIN/MAX`：
+
+| 货架 | 价格 | 内容 |
+|---|---|---|
+| 1 补给位 | 1~2 代币 | 护盾补片 / 备用能源 / **现场满额维修**（直接回满护盾，不占背包格） |
+| 2 战术道具位 | 3~4 代币 | 干扰弹 / 诱饵弹 / 紧急充能 / **引力水雷**（原地引力井，消失时把吸拢的导弹甩向最近敌人）/ 加力灌注服务 |
+| 3 黑市改装位 | 5~7 代币 | **必出**一张核心改装或一条技能觉醒；没有可觉醒技能时退回改装 |
+
+offer 字典：`kind`（`item` / `service` / `mod` / `awaken`）、`title`、`desc`、`rarity`、`icon`、`shelf`、`price`、`sold`；`ui._make_shop_row` 只按这些字段渲染。购买时背包已满不再拒买：扣代币 → `_pending_item` → `State.DESTROY`，丢弃后 `destroy_and_take` 检测 `shop_inside` 并回到商店面板。
 
 ## 9. 操作辅助装置
 
@@ -155,12 +238,12 @@
 | 干扰弹 | 身后释放，导弹向两个斜前方偏转 | `_use_flare`：560px 内锁定导弹，速度 280、左右交替 ±32°、脱锁 |
 | 诱饵弹 | 前方释放，锁定导弹转火；到达后脱锁；受引力 | `_drop_decoy` / `_apply_decoy_orders`；`DECOY_RADIUS=340` |
 | 紧急充能 | 回满加力槽 | 同 |
-| 升级增益 | 修复 25/100%、燃料 25%、上限 +10/+20、物品栏、代币 1/2/3、加力槽 +10%、推力 +7% | 同；全部只在安全区内选择 |
+| 升级增益 | 修复 25/100%、节能巡航、燃料上限 +40/+80、物品栏、代币 1/2/3、加力槽 +10%、推力 +7%、核心改装、技能觉醒 | 同；全部只在安全区内选择。`fuel_25` 已删除（进站必满油） |
 | 物品栏满 | 获得时要销毁一件 | `add_item` → `State.DESTROY` → HUD 销毁面板 |
 | 代币 | 25% 掉落；狂暴击败必掉；升级/商店 | 本作按货币计数（见 §12） |
 | 技能 | 2 槽、冷却、耗燃料；脉冲示例 | 脉冲（文档）+ 引力锚 / 相位滑行 / 诱饵信标（扩展） |
 | 脉冲 | 5s / 10 燃料 / R300 / 冲量 200 / ±15°；左右分界 | `_cast_pulse`；以玩家移动方向（静止时 facing）为分界线，导弹在左则取同侧切线向左偏转、在右则向右；正压分界线时先沿用导弹横向速度，仍无法判定才随机；对范围内导弹脱锁并设速度 |
-| 技能槽满 | 文档允许替换 | **未实现替换**，只可强化（见 README §6） |
+| 技能槽满 | 文档允许替换 | **1.3.0 已实现**：`skill_new` 带 `replace=true` → `State.REPLACE_SKILL` 双槽对比面板（`ui.show_skill_replace`），替换后新技能继承原槽一半等级（向下取整、至少 1），取消则保留原技能 |
 
 ## 12. 实现决定与新增
 
@@ -169,9 +252,11 @@
 | 代币 | 独立货币计数（HUD 右上），不占物品栏 | 文档“代币也是一种物品”与 2 格基础物品栏、商店体验冲突；货币化更可玩 |
 | 导弹入场 | 视野外侧向 820；视野内从外壳炮口 | 视野内从侧向生成会与炮塔脱节；从外壳出膛并用“锁定时不与来源碰撞”避免刚发射就自爆 |
 | 新增技能 3 个 | 引力锚 / 相位滑行 / 诱饵信标 | 文档只给脉冲示例，但要求 2 槽且升级；需要内容深度 |
+| 核心改装 / 觉醒 | 12 张被动改装分四流派 + 5 条 Lv4 觉醒分支；单局可叠层、不占物品栏 | 文档要求“强化操控物理环境与敌方弹药”的成长；用 `run.mods` 与技能字典上的 `awaken` 承载，避免再开一套装备系统 |
+| 商店三货架 | 补给 / 战术 / 黑市固定结构，黑市必出改装或觉醒 | 让代币与“绕远路逛商店”形成真实取舍；`_roll_shop` 返回带 `kind/shelf/title/desc/icon` 的 offer |
 | 导弹巢 | R300 / HP40 / 3 发齐射 / 上限 4，与炮塔按 `depth%3==2` 交替 | 提供第二种非小型敌人，改变齐射节奏 |
 | 自杀无人机 | 新增小型高速敌人：460 px/s、0.22 rad/s、5 伤害；不在主敌人刷新序列里，由独立计时器成对刷新 | 给玩家一个“不能只绕圈”的持续压力，同时用大转弯半径、机动脱锁、修整区驱离和脉冲分别给出闪避/反击/撤退三种解法 |
-| 精英 | 每 5 层，血量 ×1.6、齐射 +1 | 深度推进的可见威胁升级 |
+| 精英 | 1.3.0 改为**词缀精英**：深度 6 起每 4 层，血量 ×1.45、齐射 +1，并带拦截点防/相位跃迁/超载殉爆之一 | 深层不再只堆血（斜率 +22%→+14%）；词缀提供的是“换解法”而不是“更厚”（见 §3.4） |
 | 修整区刷新 | 击败敌人后立即刷新安全区与商店（无倒计时），取代旧的 10s / 26s 计时 | 文档只给初始距离与“击败后安全时间”；立即刷新让修整区始终随战线前移，且玩家不必空场等待 |
 | 安全区捕获 | 700px 影响圈内持续捕获，不限于燃料 0；进圈后停靠 | 文档“无动力时会把玩家吸进去”；燃料 0 时也成立，且不会把高速玩家甩飞 |
 | 燃料耗尽倒计时 | 12s | 文档只说“判定结束”，未给时间；给玩家漂移/抓安全区的机会 |
@@ -184,13 +269,13 @@
 | 系统 | 文件 | 关键函数 |
 |---|---|---|
 | 应用状态 / 过场 / 截图 | `main.gd` | `start_run` / `show_menu` / `toggle_pause` / `_run_shots` |
-| 单局 | `run.gd` | `simulate` / `spawn_enemy` / `_resolve_collisions` / `_zone_checks` / `_refresh_rest_zones` / `cast_skill` / `choose_upgrade` |
+| 单局 | `run.gd` | `simulate` / `spawn_enemy` / `_make_attacker` / `roll_enemy_ammo` / `_resolve_collisions` / `damage_enemy` / `kill_enemy` / `_zone_checks` / `_refresh_rest_zones` / `cast_skill` / `choose_upgrade` / `_apply_upgrade` / `_roll_shop` / `_update_mods` / `on_anchor_gone` / `choose_skill_replace` |
 | 星系 | `galaxy.gd` | `ensure_around` / `gravity_at` / `find_unexplored_point` / `mark_view` |
 | 隐藏路线 | `route.gd` | `ensure_ahead` / `enemy_at` / `safe_at` / `shop_at` / `body_anchors_in_chunk` |
 | 天体 | `gravity_body.gd` | `gravity_at` / `surface_gravity` |
 | 飞船 | `ship.gd` | `step` / `dash` / `take_damage` / `bounce_from` |
-| 导弹 | `missile.gd` | `step` / `unlock` / `retarget_to` |
-| 敌人 | `enemy.gd` | `step` / `_fire_one` / `take_hit` |
+| 导弹 | `missile.gd` | `step` / `unlock` / `retarget_to` / `_update_booster` / `_split` |
+| 敌人 | `enemy.gd` | `step` / `_fire_one` / `apply_hit` / `_rig_fields` / `try_intercept` / `scatter_mines` / `_move_pair` |
 | 自杀无人机 | `drone.gd` | `step` / `_lose_lock` / `_zone_ward` |
 | HUD / 覆盖层 | `ui.gd` | `refresh` / `_refresh_radar` / `_refresh_threats` / `show_levelup` / `show_shop` |
 | 标题/暂停/设置 | `menu.gd` | `build` / `_build_settings` / `_build_howto` |
