@@ -102,7 +102,7 @@ escape-gravity-release/
 - **未发现也会开火**：`enemy._fire_hidden` 在屏幕边缘外 180~320px 生成偷袭弹，切线初速让它绕弧切入；72% 的方向落在敌人方位 ±57° 内，其余全随机。偷袭弹 `sneak=true`，单独上限 `ENEMY_HIDDEN_MAX=2`，且**不占**正常 3 枚直射名额。别用 `locked_missile_count()` 把它们算进去，否则会挤掉正面齐射、破坏诱导循环。
 - **开局即有安全区与商店**：`_initial_spawn` 先生成路线首段安全区（`route.safe_at(0)`，并消费掉 `next_safe`），再放商店、生成首个敌人；修整区不需要首杀解锁。首段安全区在路线 35% 处、横向偏移 470~600，离飞船通常 ≥800px，不会被 700px 捕获圈在开局就拽走。之后每次击败敌人都由 `_refresh_rest_zones` 调用 `_spawn_safe_respawn` / `_spawn_shop_respawn` 按路线预置点刷新；路线缺失时才回退 `find_unexplored_point(700, 1875)`。不要把补给锁回首杀之后。
 - **安全区与敌人保持间距**：安全区预置在相邻两段敌人的中点（`SAFE_T=0.50`，首段 `SAFE_FIRST_T=0.35`），横向偏移 470~600，圆心离两侧敌人预置点 ≥1150；刷新时 `_clear_zone_of_enemies` 会按 `ZONE_ENEMY_CLEAR=520` 推开正在交战的敌人，敌人刷新校验同一间距（1220），差额沿安全区/商店径向滑出，不要退回 900px 的环形跳点。别再把安全区挪回贴着上一场战斗的位置。安全区出生时只有 `ZONE_ENTRY_RADIUS=78`，但所有间距/引力/燃料判定都用 `clearance_radius()`（恒为完整 280）；玩家到中心才扩张，扩张同一帧把 `radius` 设为 280，动画只影响外观。`gravity_ship_at` 在安全区整个 700px 影响圈内返回零（station-keeping），否则 3R 引力圈会把进站/停靠的飞船拖出去。
-- **安全区必须可靠吸入**：`assist_accel` 在 `clearance_radius()+ZONE_INFLUENCE_EXTRA`（700px）影响圈内把速度朝“指向圆心的目标速度”拉（`ZONE_CAPTURE_SPEED=520`、`ZONE_CAPTURE_ACCEL=1600`、`ZONE_CAPTURE_GAIN=3.2`），并压掉切向速度；`gravity_ship_at` 在**整个影响圈**内抵消天体引力，避免恒星引力把进站路线甩出去。高速切线/边缘掠过也会被吸进 R280 内停靠；玩家明确朝圈外推进（输入点积 < -0.35）时仍可脱离。进圈后由 1400 px/s² 反推停靠。别再退回“只在无输入时给 46 px/s²”的旧实现。
+- **安全区必须可靠吸入**：`assist_accel` 在 `clearance_radius()+ZONE_INFLUENCE_EXTRA`（700px）影响圈内把速度朝“指向圆心的目标速度”拉（`ZONE_CAPTURE_SPEED=520`、`ZONE_CAPTURE_ACCEL=1600`、`ZONE_CAPTURE_GAIN=3.2`），并压掉切向速度；`gravity_ship_at` 在**整个影响圈**内抵消天体引力，避免恒星引力把进站路线甩出去。高速切线/边缘掠过也会被吸进 R280 内停靠；玩家明确朝圈外推进（输入点积 < -0.35）时仍可脱离。进圈后由 1400 px/s² 反推停靠。**停靠完成（在圈内停稳过一次，`Zone.docked`）后必须立刻停止反推**：补满燃料的玩家斜向离开时不能继续沿 -vel 刹车，否则会被压在约 57 px/s、十几秒里烧掉几十点燃料；反推只在 `docked=false` 时生效，别退回“一直刹车、只靠输入点积放手”的旧实现。
 - **物质必须可靠吸收**：`MATTER_ABSORB=260`，进入后 `MATTER_TRACTOR_LOCK=5s` 锁定，并以 `MATTER_TRACTOR_SPEED=1200`（高于飞船外部上限 720）直接追向飞船，`MATTER_COLLECT_RADIUS=40` 内拾取。即使玩家高速侧掠或正在远离，物质也会追上并被吸收，不能出现“靠近后被甩飞”的行为；别改回“只加一个小加速度 + 520 速度上限”。
 - **修整区只在击败敌人后立即刷新**：`kill_enemy()` 在 `depth += 1` 后调用 `Run._refresh_rest_zones()`，把安全区与商店各自移到**下一段路线预置点**（`_spawn_safe_respawn` → `route.safe_at`、`_spawn_shop_respawn` → `_next_route_shop_for_progress`，游标至少推进到当前深度）；顺序固定为先安全区、后商店，旧信标先移除，两者刷新后仍互不重叠。**没有任何倒计时**：不要重新引入 `ZONE_RESPAWN` / `SHOP_RESPAWN` / `safe_respawn_timer` / `shop_respawn_timer`，也不要恢复 `_maybe_refresh_shop`；离开安全区/商店本身不触发刷新（离开安全区 HUD 文案为“离开安全区 · 击败敌人后刷新下一个”）。击败敌人时若玩家正停靠在安全区（`safe_zone.entered`）或处于商店范围/商店面板（`shop_inside` / `state == State.SHOP`），刷新挂起为 `pending_safe_refresh` / `pending_shop_refresh`，由 `_leave_safe` / `_leave_shop` 在同一帧补刷，不能把区域从玩家脚下抽走。下一名敌人仍是击杀后 `DEPTH_SAFE_TIME=8` 秒刷新。
 - **空白路径可能藏加速天体**：`RunRoute._make_route_body` 有 42% 概率尝试把该段的天体锚点放进两个敌人之间的空白路径（`PATH_BODY_T=0.56~0.78`、横向 ≤160、半径 140~180），只有避开安全区/商店/两侧敌人/已生成路线天体时才接受，否则回退到原侧方锚点（`BODY_T=0.50`、偏移 380~480）。每段仍保证有一个天体锚点。
@@ -172,7 +172,7 @@ python3 tools/make_dist.py --platforms windows,linux
 
 改动运行逻辑后，至少完成：
 
-1. `RESULT: 258 checks, 0 failed`；导出包内再跑一次 `./build/linux/EscapeGravity.x86_64 --headless -- --selftest`。
+1. `RESULT: 259 checks, 0 failed`；导出包内再跑一次 `./build/linux/EscapeGravity.x86_64 --headless -- --selftest`。
 2. 用导出包重新生成截图；桌面 13 张（含 `13_aegis` / `14_twin`）+ 移动端 20:9 一张，检查标题居中、触屏按钮不重叠。
 3. 无运行时绘制审计（应只有 `RenderingServer.frame_post_draw` 一条命中）：
    ```bash

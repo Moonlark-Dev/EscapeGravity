@@ -1,6 +1,6 @@
 # QA / 验证记录
 
-日期：2026-11-21 · 版本：1.4.0 · 引擎：Godot 4.7.2 stable
+日期：2026-11-22 · 版本：1.4.0 · 引擎：Godot 4.7.2 stable
 环境：Linux x86_64 · Godot headless + Xvfb/llvmpipe · JDK 17 (Temurin 17.0.21) · Android SDK build-tools 35 / platform 35
 
 ---
@@ -11,17 +11,17 @@
 godot --headless --path . -- --selftest
 ```
 
-完整输出：`docs/selftest_output.txt`（258 项断言 + 机器人明细）。
+完整输出：`docs/selftest_output.txt`（259 项断言 + 机器人明细）。
 
 ```
-RESULT: 258 checks, 0 failed
+RESULT: 259 checks, 0 failed
 ```
 
 **导出包内自测**（同一套脚本，从内嵌 PCK 运行）：
 
 ```bash
 ./build/linux/EscapeGravity.x86_64 --headless -- --selftest
-# RESULT: 258 checks, 0 failed
+# RESULT: 259 checks, 0 failed
 ```
 
 覆盖面：
@@ -34,6 +34,7 @@ RESULT: 258 checks, 0 failed
 - 陨石：0.5 磨损、撞飞后对敌 5、受飞船引力
 - 物质：大 3 XP、超 260 不吸、150 内被吸、高速远离仍被追上吸收、100 XP/级（1.4.0 由 20 ×5）
 - 区域：安全区进入前 R78、扩张瞬间 R280（贴图仍在缩小状态）、补满/清弹/隐藏；**离开安全区不再启动倒计时刷新**；高速切线掠过仍被吸入停靠、径向高速进入也能停靠；商店 3 件且不回燃料
+- 安全区停靠/离开（1.4.0 修正）：停靠完成（补满燃料并在圈内停稳）后 `Zone.docked` 置位，安全区不再沿 -vel 反推；以与出圈方向成 70° 的掠射角离开 3 秒内出圈、耗油 <10（旧实现 11.9s / 52 燃料，80° 时 19.4s / 85 燃料）
 - 出生区：开局同时预置路线首段安全区（与首个敌人保持 1220px 间距）与首个商店，不需要首杀解锁；首个敌人按路线生成；开局之后**只有击败敌人才刷新修整区**
 - 修整区刷新（`_test_rest_zone_refresh`，1.1.0 新增 14 项断言）：敌前没有修整区 / 空场 30s 不会有倒计时刷新 / 击杀后安全区与商店**立即**刷新且互不重叠 / 离开安全区不启动倒计时、离开 20s 仍无 / 商店内击杀挂起并在离开时补刷 / 安全区内击杀挂起并在离开时补刷
 - 商店绑定：每次击败敌人都会把商店立即刷新到下一段路线商店点（游标至少推进到当前深度）并绑定新深度，不再有 26s 重开与“跨过所属敌人”的单独重定位
@@ -74,7 +75,7 @@ RESULT: 258 checks, 0 failed
 
 ## 2. 导出包验证
 
-> **1.4.0**（2026-11-21）：源码自测 **258/258**，Linux / Windows / Android 全部本地重新导出并验证，13 张桌面截图 + 1 张移动端 20:9 截图由导出包重新生成，`dist/` 1.4.0 发行包已打包（含 SHA256SUMS）。
+> **1.4.0**（2026-11-22）：源码自测 **259/259**，Linux / Windows / Android 全部本地重新导出并验证，13 张桌面截图 + 1 张移动端 20:9 截图由导出包重新生成，`dist/` 1.4.0 发行包已打包（含 SHA256SUMS）。
 > Android 本次**已重建**：versionCode **16** / versionName `1.4.0`，用项目密钥签名并通过 v2 + v3 校验。
 > **未上传到 OpenList**（保持“用户明确要求才发”的约定）。
 
@@ -86,9 +87,9 @@ xvfb-run -a -s "-screen 0 1280x720x24" \
 ```
 
 - 1.4.0 导出后在 Xvfb + llvmpipe 下真实运行，退出码 0；**13 张桌面截图**全部由导出包渲染产生（含 `13_aegis` 偏导母舰正面护盾与 `14_twin` 双子中继站 + 超载水雷），已复制到 `docs/shots/`。
-- 导出包内自测：`./build/linux/EscapeGravity.x86_64 --headless -- --selftest` → `RESULT: 258 checks, 0 failed`。
+- 导出包内自测：`./build/linux/EscapeGravity.x86_64 --headless -- --selftest` → `RESULT: 259 checks, 0 failed`。
 - 标题、中文字体、贴图、音频、脚本均从内嵌 PCK 加载；无缺失贴图警告。
-- `build/linux/EscapeGravity.x86_64` = 97,747,016 bytes，ELF x86-64（1.4.0 导出）。
+- `build/linux/EscapeGravity.x86_64` = 97,747,720 bytes，ELF x86-64（1.4.0 导出）。
 - 触屏 20:9 截图另用 `--resolution 2400x1080 -- --touch --shots=...` 生成，取 `04_battle` 作为 `docs/shots/12_touch.png`；触屏按钮仍按“加力 → 技能 → 物品栏”纵向排列，HUD 的改装芯片行在左上角条组下方，不与摇杆/按钮重叠。
 
 ### 2.2 Windows（1.4.0 本地导出验证）
@@ -99,7 +100,7 @@ file build/windows/EscapeGravity.exe
 python3 -c "d=open(...).read(); print(b'GDPC' in d[-4096:])"   # True
 ```
 
-- 1.4.0 本地导出：133,431,048 bytes，PE32+ x86-64，尾部 `GDPC` 校验通过；单文件、内嵌 PCK，无外部依赖；文件/产品版本元数据同步升到 `1.4.0.0`。
+- 1.4.0 本地导出：133,431,768 bytes，PE32+ x86-64，尾部 `GDPC` 校验通过；单文件、内嵌 PCK，无外部依赖；文件/产品版本元数据同步升到 `1.4.0.0`。
 - 未做商业代码签名（没有证书），首次运行会有 SmartScreen 提示。
 
 ### 2.3 Android（1.4.0 本地重建并签名）
@@ -132,8 +133,8 @@ Number of signers: 1
 
 | 文件 | 大小 |
 |---|---|
-| `EscapeGravity-1.4.0-windows-x86_64.zip` | 61,553,698 bytes |
-| `EscapeGravity-1.4.0-linux-x86_64.tar.gz` | 51,879,168 bytes |
+| `EscapeGravity-1.4.0-windows-x86_64.zip` | 61,554,361 bytes |
+| `EscapeGravity-1.4.0-linux-x86_64.tar.gz` | 51,879,889 bytes |
 | `EscapeGravity-1.4.0-android-arm64.apk` | 50,967,396 bytes |
 | `SHA256SUMS.txt` | 覆盖以上文件与 `ANDROID-安装说明.txt` |
 

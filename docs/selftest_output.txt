@@ -77,6 +77,7 @@ PASS  进入安全区隐藏威胁信息
 PASS  离开安全区后消失，且不再有刷新倒计时
 PASS  高速进入安全区会被辅助装置刹停   v=11.6 d=11 hidden=true
 PASS  高速切向掠过安全区会被吸进圈内   d=12 v=11.5 hidden=true
+PASS  停靠完成（燃料已补满）后斜向离开不再被反推   docked=true left=true t=2.9s fuel=5.8
 PASS  商店打开 3 件商品且不回燃料
 PASS  关闭商店回到游戏
 PASS  物品栏基础 2 格
@@ -265,4 +266,4 @@ PASS  地图生成时填充了物质   matter=150
   bot seed=302 orbit=880 invuln=true -> hp=0 hits=2 t=11.4s state=0 dmg=
 PASS  无敌机器人能靠诱导击毁炮塔（验证核心循环）   invuln kills 3/3
 PASS  普通机器人也能至少击毁一次炮塔   normal kills 1/3
-RESULT: 258 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 21.5333333333334, "state": 4 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 56.6166666666647, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 0, "time": 8.48333333333333, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 22.8666666666666, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 10.9000000000001, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": true, "hits": 2, "time": 11.3833333333335, "state": 0 }], "invuln_kills": 3, "normal_kills": 1 })
+RESULT: 259 checks, 0 failed  (bot: { "attempts": [{ "seed": 200, "orbit": 700.0, "invuln": false, "killed": false, "hits": 0, "time": 21.5333333333334, "state": 4 }, { "seed": 300, "orbit": 700.0, "invuln": true, "killed": true, "hits": 2, "time": 56.6166666666647, "state": 0 }, { "seed": 201, "orbit": 790.0, "invuln": false, "killed": false, "hits": 0, "time": 8.48333333333333, "state": 4 }, { "seed": 301, "orbit": 790.0, "invuln": true, "killed": true, "hits": 2, "time": 22.8666666666666, "state": 0 }, { "seed": 202, "orbit": 880.0, "invuln": false, "killed": true, "hits": 2, "time": 10.9000000000001, "state": 0 }, { "seed": 302, "orbit": 880.0, "invuln": true, "killed": true, "hits": 2, "time": 11.3833333333335, "state": 0 }], "invuln_kills": 3, "normal_kills": 1 })

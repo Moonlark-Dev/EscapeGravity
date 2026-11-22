@@ -25,8 +25,9 @@
 - **PC 手柄键位提示**：`Controls` 记录最近一次真正操作的设备（键盘/鼠标 vs 手柄按键/摇杆），键位提示按设备切换：用手柄时只显示手柄键位（左摇杆、RB、Y/B、X、方向键、Start、A），用键鼠时只显示键盘键位。覆盖 HUD、技能角标、物品提示、暂停/商店/升级/替换/觉醒/丢弃/结算面板。
 - **手柄可操作面板**：方向键（←/↑/→/↓）直接选升级/商店/替换/觉醒/丢弃卡，A 在结算界面再来一局，←/→ 在战斗中切换物品；修正 RB 同时绑定「加力」和「切换物品」的冲突（现在 RB 只加力）。
 - **升级选项说明完整显示**：升级卡从 396 加高到 430，说明区从 100 加高到 160，并按 `Font.get_multiline_string_size` 实测排版高度自动缩字号（15 → 最低 10px）；技能替换、商店货架、觉醒二选一共用同一套自适应，长说明不再被卡片底边裁掉。
+- **离开安全区不再被反推**：停靠完成（补满燃料并在圈内停稳过一次，`Zone.docked`）后，安全区不再对飞船施加反推；以前停靠刹车会一直沿速度反向推，斜着出圈会被压在约 **57 px/s**，十几秒里烧掉几十点燃料。进站的捕获井与高速进站刹车保持不变。
 
-自测从 **248** 项增加到 **258** 项断言，全部通过。
+自测从 **248** 项增加到 **259** 项断言，全部通过。
 
 ### 1.3.0 更新
 
@@ -150,7 +151,7 @@ escape-gravity-release/
 │   ├── meteor.gd / matter.gd / zone.gd / decoy.gd / anchor.gd / fx.gd
 │   ├── assets.gd / audio.gd / store.gd / controls.gd
 │   ├── backdrop.gd           # 视差星云/星点
-│   └── selftest.gd           # 258 项无头断言 + 机器人可玩性验证
+│   └── selftest.gd           # 259 项无头断言 + 机器人可玩性验证
 ├── assets/                   # world / ui / audio / fonts
 ├── tools/                    # 素材生成、后期、构建、打包
 ├── docs/                     # ART.md / DESIGN_MAP.md / QA.md / 资产清单 / 截图
@@ -173,7 +174,7 @@ escape-gravity-release/
 
 ```bash
 godot --headless --path . -- --selftest
-# RESULT: 258 checks, 0 failed
+# RESULT: 259 checks, 0 failed
 ```
 
 ### 界面
