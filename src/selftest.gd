@@ -181,17 +181,17 @@ func _test_physics() -> void:
 	r.ship.boost_ready = true
 	r.auto_boost = true
 	_step(r, 1.0)
-	_check("加力极速 ≈192", absf(r.ship.vel.length() - 192.0) < 2.0, "speed=%.1f" % r.ship.vel.length())
+	_check("加力极速 ≈212", absf(r.ship.vel.length() - 212.0) < 2.0, "speed=%.1f" % r.ship.vel.length())
 	var boost_fuel := EG.SHIP_FUEL_BOOST * (EG.SHIP_MAX_SPEED * EG.SHIP_BOOST_SPEED_MULT / (EG.SHIP_ACCEL * EG.SHIP_BOOST_MULT))
 	_check("加力燃料按实际加速计（≈4.8/s 满推力）", absf(r.ship.fuel - (r.ship.fuel_max - boost_fuel)) < 0.12,
 		"fuel=%.1f want=%.1f" % [r.ship.fuel, r.ship.fuel_max - boost_fuel])
 	_check("初始加力槽 6.6s（旧 2.2s 的三倍）", absf(r.ship.boost_cap - 6.6) < 0.001, "cap=%.2f" % r.ship.boost_cap)
 
-	# 加力结束后 192 的惯性同样保留。
+	# 加力结束后 212 的惯性同样保留。
 	r.auto_input = Vector2.ZERO
 	r.auto_boost = false
 	_step(r, 2.0)
-	_check("加力结束后保持 192 惯性", absf(r.ship.vel.length() - 192.0) < 2.0,
+	_check("加力结束后保持 212 惯性", absf(r.ship.vel.length() - 212.0) < 2.0,
 		"speed=%.1f" % r.ship.vel.length())
 
 	# single-frame thrust ratio
