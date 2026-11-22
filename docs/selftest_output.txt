@@ -7,10 +7,10 @@ PASS  松开推进 2 秒仍保持 150（太空无阻力）   speed=150.0
 PASS  滑行不消耗燃料   fuel=268.4
 PASS  超过引擎极速的惯性被保留   speed=400.0
 PASS  极速后继续按住推进不耗燃料   fuel=270.0
-PASS  加力极速 ≈192   speed=192.0
-PASS  加力燃料按实际加速计（≈4.8/s 满推力）   fuel=269.2 want=269.2
+PASS  加力极速 ≈212   speed=212.0
+PASS  加力燃料按实际加速计（≈4.8/s 满推力）   fuel=269.1 want=269.1
 PASS  初始加力槽 6.6s（旧 2.2s 的三倍）   cap=6.60
-PASS  加力结束后保持 192 惯性   speed=192.0
+PASS  加力结束后保持 212 惯性   speed=212.0
 PASS  加力推力 3×   plain=6.33 boost=19.00
 PASS  停止加力 0.7s 后加力槽恢复   before=0.60 after=1.27
 PASS  推进中（未加力）加力槽同样回充   before=1.40 after=2.36
