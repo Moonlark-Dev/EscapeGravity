@@ -2199,18 +2199,26 @@ func assist_accel(s: PlayerShip, delta: float = 0.0) -> Vector2:
 	var input := _read_dir()
 	if player_hidden or (safe_zone != null and safe_zone.inside(s.position)):
 		# 高速进站：安全区扩张到 R280 后，辅助装置用足够强的反推把飞船
-		# 停在圈内，而不是让它在 0.4 秒里穿过去。默认一直刹车；只有玩家
-		# 明确把推进方向指向圈外时才放手，避免把玩家困在安全区里。
+		# 停在圈内，而不是让它在 0.4 秒里穿过去。但停靠完成（在圈内停稳
+		# 过一次）后必须立刻收手：玩家补满燃料要离开时，安全区不能再沿
+		# -vel 持续反推。旧实现会一直刹车，斜着出圈被压在 ~57 px/s、
+		# 十几秒里烧掉几十点燃料；现在停稳后 `docked` 置位，离开方向完全
+		# 不受力，进站刹车仍保留。
 		var z: Zone = safe_zone
-		if z != null and s.vel.length() > 12.0:
-			var leaving := false
-			if input.length() > 0.1:
-				var to_center: Vector2 = (z.position - s.position)
-				if to_center.length() > 1.0:
+		if z != null:
+			var to_center: Vector2 = z.position - s.position
+			var dist: float = to_center.length()
+			var speed: float = s.vel.length()
+			if speed <= 12.0:
+				z.docked = true
+			if not z.docked and speed > 12.0 and dist > 1.0:
+				# 进站途中玩家明确朝圈外推进时照样放手，避免把人困住。
+				var leaving := false
+				if input.length() > 0.1:
 					leaving = input.normalized().dot(to_center.normalized()) < -0.35
-			if not leaving:
-				acc += -s.vel.normalized() * minf(EG.SHIP_SAFE_BRAKE, s.vel.length() * 6.0)
-				assist_active = true
+				if not leaving:
+					acc += -s.vel.normalized() * minf(EG.SHIP_SAFE_BRAKE, speed * 6.0)
+					assist_active = true
 		return acc
 	if safe_zone != null and safe_zone.active:
 		var z: Zone = safe_zone

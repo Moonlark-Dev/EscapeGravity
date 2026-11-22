@@ -13,6 +13,9 @@ var kind := "safe"
 var radius := EG.ZONE_ENTRY_RADIUS
 var active := true
 var entered := false
+## 停靠完成（补满燃料并在圈内停稳过一次）：安全区不再对飞船施加反推，
+## 玩家可以自由离开，不必在低速下烧燃料挣脱捕获井/刹车。
+var docked := false
 var used := false
 var _ring: Sprite2D
 var _fill: Sprite2D

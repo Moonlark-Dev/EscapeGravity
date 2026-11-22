@@ -37,7 +37,7 @@ const SHIP_FUEL_BOOST := 4.8          # 1.2x thrust cost (was 2x)
 const SHIP_FUEL_ASSIST := 0.4         # orbit assist / docking brake, 10% of thrust
 const SHIP_ORBIT_ACCEL := 230.0       # tangential assist while diving at a body
 const SHIP_ORBIT_SPEED_MAX := 600.0   # assist fades to zero at this speed
-const SHIP_SAFE_BRAKE := 1400.0       # auto-dock deceleration inside a safe zone
+const SHIP_SAFE_BRAKE := 1400.0       # auto-dock deceleration while entering a safe zone (stops once docked)
 const SHIP_SHIELD_MAX := 20.0
 const SHIP_REGEN := 0.0
 

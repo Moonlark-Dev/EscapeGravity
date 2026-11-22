@@ -692,6 +692,36 @@ func _test_zones() -> void:
 		"d=%.0f v=%.1f hidden=%s" % [rt.ship.position.distance_to(z3.position), rt.ship.vel.length(), str(rt.player_hidden)])
 	_kill(rt)
 
+	# 补满燃料停稳后离开：停靠反推必须收手，不能沿 -vel 继续按住飞船。
+	# 旧实现斜着出圈会被压在 ~57 px/s，十几秒里烧掉几十点燃料。
+	var rl := _new_run(128)
+	_clear_arena(rl)
+	var z4 := rl.make_zone("safe", Vector2.ZERO)
+	rl.safe_zone = z4
+	rl.ship.position = Vector2.ZERO
+	rl.ship.vel = Vector2.ZERO
+	rl.ship.fuel = rl.ship.fuel_max
+	rl.auto_boost = false
+	rl._zone_checks()
+	var leave_fuel: float = rl.ship.fuel
+	var left := false
+	var leave_t := 0.0
+	for i in range(360):
+		# 与出圈方向成 70° 的掠射角（真人绕开安全区时的典型离开方向）。
+		var outward: Vector2 = rl.ship.position - z4.position
+		if outward.length() < 1.0:
+			outward = Vector2.RIGHT
+		rl.auto_input = outward.normalized().rotated(deg_to_rad(70.0))
+		rl.simulate(dt)
+		leave_t += dt
+		if rl.safe_zone == null:
+			left = true
+			break
+	_check("停靠完成（燃料已补满）后斜向离开不再被反推",
+		z4.docked and left and leave_fuel - rl.ship.fuel < 10.0,
+		"docked=%s left=%s t=%.1fs fuel=%.1f" % [str(z4.docked), str(left), leave_t, leave_fuel - rl.ship.fuel])
+	_kill(rl)
+
 	var sz := r.make_zone("shop", Vector2(3000, 0))
 	r.shop_zone = sz
 	r.ship.position = sz.position
